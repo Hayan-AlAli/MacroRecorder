@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{DBE20F8D-0A81-4EC7-95B9-EBFE6118EE7A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacroApp.UI", "src\MacroApp.UI\MacroApp.UI.csproj", "{29D10389-F143-4489-BD48-E70F6AD5851F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacroApp.Core", "src\MacroApp.Core\MacroApp.Core.csproj", "{1399BE7C-93E1-4AD8-AD02-05839D9C374C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacroApp.NativeInterop", "src\MacroApp.NativeInterop\MacroApp.NativeInterop.csproj", "{245C562E-97F7-4CF2-AD0B-9643FD194869}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacroApp.Scripting", "src\MacroApp.Scripting\MacroApp.Scripting.csproj", "{AF3BB79D-77B6-4985-9676-5ECE1AF78E61}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacroApp.ImageMatch", "src\MacroApp.ImageMatch\MacroApp.ImageMatch.csproj", "{60296844-CC0A-4E62-BF2D-7A12F7C04BC9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{22284185-7867-4ACB-A14E-2E90744232B2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacroApp.Tests", "tests\MacroApp.Tests\MacroApp.Tests.csproj", "{3C6AD222-3C08-41F6-8401-94E915282A19}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{29D10389-F143-4489-BD48-E70F6AD5851F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29D10389-F143-4489-BD48-E70F6AD5851F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29D10389-F143-4489-BD48-E70F6AD5851F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29D10389-F143-4489-BD48-E70F6AD5851F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1399BE7C-93E1-4AD8-AD02-05839D9C374C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1399BE7C-93E1-4AD8-AD02-05839D9C374C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1399BE7C-93E1-4AD8-AD02-05839D9C374C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1399BE7C-93E1-4AD8-AD02-05839D9C374C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{245C562E-97F7-4CF2-AD0B-9643FD194869}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{245C562E-97F7-4CF2-AD0B-9643FD194869}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{245C562E-97F7-4CF2-AD0B-9643FD194869}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{245C562E-97F7-4CF2-AD0B-9643FD194869}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AF3BB79D-77B6-4985-9676-5ECE1AF78E61}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF3BB79D-77B6-4985-9676-5ECE1AF78E61}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AF3BB79D-77B6-4985-9676-5ECE1AF78E61}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AF3BB79D-77B6-4985-9676-5ECE1AF78E61}.Release|Any CPU.Build.0 = Release|Any CPU
+		{60296844-CC0A-4E62-BF2D-7A12F7C04BC9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{60296844-CC0A-4E62-BF2D-7A12F7C04BC9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{60296844-CC0A-4E62-BF2D-7A12F7C04BC9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{60296844-CC0A-4E62-BF2D-7A12F7C04BC9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C6AD222-3C08-41F6-8401-94E915282A19}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C6AD222-3C08-41F6-8401-94E915282A19}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C6AD222-3C08-41F6-8401-94E915282A19}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C6AD222-3C08-41F6-8401-94E915282A19}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{29D10389-F143-4489-BD48-E70F6AD5851F} = {DBE20F8D-0A81-4EC7-95B9-EBFE6118EE7A}
+		{1399BE7C-93E1-4AD8-AD02-05839D9C374C} = {DBE20F8D-0A81-4EC7-95B9-EBFE6118EE7A}
+		{245C562E-97F7-4CF2-AD0B-9643FD194869} = {DBE20F8D-0A81-4EC7-95B9-EBFE6118EE7A}
+		{AF3BB79D-77B6-4985-9676-5ECE1AF78E61} = {DBE20F8D-0A81-4EC7-95B9-EBFE6118EE7A}
+		{60296844-CC0A-4E62-BF2D-7A12F7C04BC9} = {DBE20F8D-0A81-4EC7-95B9-EBFE6118EE7A}
+		{3C6AD222-3C08-41F6-8401-94E915282A19} = {22284185-7867-4ACB-A14E-2E90744232B2}
+	EndGlobalSection
+EndGlobal

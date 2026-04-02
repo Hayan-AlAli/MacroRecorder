@@ -1,0 +1,306 @@
+<Window x:Class="MacroApp.UI.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
+        Title="MacroApp — Macro Recorder"
+        Width="1280" Height="800"
+        MinWidth="960" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgPrimaryBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}"
+        Loaded="Window_Loaded">
+
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding EmergencyStopCommand}" />
+        <KeyBinding Key="S" Modifiers="Ctrl" Command="{Binding SaveMacroCommand}" />
+        <KeyBinding Key="N" Modifiers="Ctrl" Command="{Binding NewMacroCommand}" />
+    </Window.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- Toolbar -->
+            <RowDefinition Height="*" />       <!-- Main content -->
+            <RowDefinition Height="Auto" />   <!-- Status bar -->
+        </Grid.RowDefinitions>
+
+        <!-- ═══ Toolbar ═══════════════════════════════════════════ -->
+        <Border Grid.Row="0"
+                Background="{StaticResource ToolbarGradient}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,6">
+            <DockPanel>
+                <!-- App title -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="◆" FontSize="20" Foreground="{StaticResource AccentBlueBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                    <TextBlock Text="MacroApp" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="v1.0" FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="6,3,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- Right-side buttons -->
+                <StackPanel DockPanel.Dock="Right" Margin="0,0,12,0" VerticalAlignment="Center">
+                    <Slider x:Name="SpeedSlider"
+                            Minimum="0.25" Maximum="1.75" 
+                            Value="{Binding SelectedSpeed}"
+                            TickPlacement="BottomRight"
+                            TickFrequency="0.25"
+                            IsSnapToTickEnabled="True"
+                            Width="120"
+                            VerticalAlignment="Center" />
+                    <Grid Width="120">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Slow" FontSize="10"
+                                   Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Left" />
+                        <TextBlock Grid.Column="1" Text="Normal" FontSize="10"
+                                   Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="Fast" FontSize="10"
+                                   Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Right" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- Center toolbar buttons -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Record -->
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding RecordCommand}"
+                            Padding="12,6" Margin="3,0" ToolTip="Start Recording (F9)">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="10" Height="10" Fill="{StaticResource AccentRedBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Record" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Stop Recording -->
+                    <Button Style="{StaticResource DangerButton}" Command="{Binding StopRecordingCommand}"
+                            Padding="12,6" Margin="3,0" ToolTip="Stop Recording">
+                        <StackPanel Orientation="Horizontal">
+                            <Rectangle Width="10" Height="10" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Stop Rec" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Rectangle Width="1" Fill="{StaticResource BorderBrush}" Margin="8,4" />
+
+                    <!-- Play -->
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding PlayCommand}"
+                            Background="{StaticResource AccentGreenBrush}" Padding="12,6" Margin="3,0" ToolTip="Play Macro (F10)">
+                        <StackPanel Orientation="Horizontal">
+                            <Polygon Points="0,0 10,6 0,12" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Play" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Pause -->
+                    <Button Style="{StaticResource GhostButton}" Command="{Binding PausePlaybackCommand}"
+                            Padding="10,6" Margin="3,0" ToolTip="Pause/Resume">
+                        <TextBlock Text="⏸" FontSize="14" />
+                    </Button>
+
+                    <!-- Stop Playback -->
+                    <Button Style="{StaticResource DangerButton}" Command="{Binding StopPlaybackCommand}"
+                            Padding="12,6" Margin="3,0" ToolTip="Stop Playback">
+                        <StackPanel Orientation="Horizontal">
+                            <Rectangle Width="10" Height="10" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Stop" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Rectangle Width="1" Fill="{StaticResource BorderBrush}" Margin="8,4" />
+
+                    <!-- New Macro -->
+                    <Button Style="{StaticResource GhostButton}" Command="{Binding NewMacroCommand}"
+                            Padding="10,6" Margin="3,0" ToolTip="New Macro (Ctrl+N)">
+                        <TextBlock Text="＋ New" />
+                    </Button>
+
+                    <!-- Save -->
+                    <Button Style="{StaticResource GhostButton}" Command="{Binding SaveMacroCommand}"
+                            Padding="10,6" Margin="3,0" ToolTip="Save (Ctrl+S)">
+                        <TextBlock Text="💾 Save" />
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ═══ Main Content ═════════════════════════════════════ -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="200" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="280" MinWidth="200" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Left Panel: Macro List ────────────────────────── -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource BgSecondaryBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="MACROS" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextMutedBrush}" Margin="12,10,12,6"
+                                />
+
+                    <TextBox DockPanel.Dock="Top" Text="{Binding MacroList.SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="8,4" />
+
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4">
+                        <Button Style="{StaticResource DangerButton}" Command="{Binding MacroList.DeleteSelectedCommand}" Padding="12,4" ToolTip="Delete Selected Macro">
+                            <TextBlock Text="Delete" />
+                        </Button>
+                    </StackPanel>
+
+                    <DataGrid ItemsSource="{Binding MacroList.FilteredMacros}"
+                              SelectedItem="{Binding MacroList.SelectedMacro, Mode=TwoWay}"
+                              Margin="4">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" IsReadOnly="True" />
+                            <DataGridTextColumn Header="HotKey" Binding="{Binding HotKey}" Width="70" IsReadOnly="True" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="3" Background="{StaticResource BgPrimaryBrush}"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch" />
+
+            <!-- ── Center Panel: Script Editor ───────────────────── -->
+            <Border Grid.Column="2" Padding="0">
+                <DockPanel>
+                    <!-- Recording indicator -->
+                    <Border DockPanel.Dock="Top"
+                            Background="{StaticResource AccentRedBrush}"
+                            Padding="8,4"
+                            Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="White" Margin="0,0,6,0"
+                                     Opacity="{Binding RecordingIndicatorVisible, Converter={StaticResource BoolToOpacity}, FallbackValue=1}" />
+                            <TextBlock Text="RECORDING" FontWeight="Bold" Foreground="White" FontSize="11" />
+                            <TextBlock Text="{Binding EventCount, StringFormat=' — {0} events'}"
+                                       Foreground="White" Margin="8,0,0,0" FontSize="11" Opacity="0.8" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Countdown overlay -->
+                    <Border DockPanel.Dock="Top"
+                            Background="{StaticResource AccentOrangeBrush}"
+                            Padding="8,4"
+                            Visibility="{Binding IsCountingDown, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                        <TextBlock Text="{Binding CountdownValue, StringFormat='Recording in {0}...'}"
+                                   FontWeight="Bold" Foreground="White" FontSize="14" HorizontalAlignment="Center" />
+                    </Border>
+
+                    <!-- Editor tabs -->
+                    <Border DockPanel.Dock="Top"
+                            Background="{StaticResource BgTertiaryBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="0,0,0,1"
+                            Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📝 Script Editor" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBlueBrush}" />
+                            <TextBlock Text="{Binding Editor.MacroName, StringFormat=' — {0}'}"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="4,0,0,0" />
+                            <TextBlock Text=" •" Foreground="{StaticResource AccentOrangeBrush}"
+                                       Visibility="{Binding Editor.IsDirty, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Validation bar -->
+                    <Border DockPanel.Dock="Bottom"
+                            Background="{StaticResource BgTertiaryBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="0,1,0,0"
+                            Padding="8,4"
+                            MaxHeight="80">
+                        <TextBlock Text="{Binding Editor.ValidationMessage}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="11"
+                                   Foreground="{Binding Editor.HasErrors, Converter={StaticResource BoolToErrorBrush}, FallbackValue={StaticResource TextMutedBrush}}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+
+                    <!-- AvalonEdit editor -->
+                    <avalonedit:TextEditor x:Name="ScriptEditor"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           FontSize="13"
+                                           Background="{StaticResource BgPrimaryBrush}"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           ShowLineNumbers="True"
+                                           WordWrap="False"
+                                           HorizontalScrollBarVisibility="Auto"
+                                           VerticalScrollBarVisibility="Auto"
+                                           Padding="4" />
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="3" Width="3" Background="{StaticResource BgPrimaryBrush}"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch" />
+
+            <!-- ── Right Panel: Properties / Live Events ─────────── -->
+            <Border Grid.Column="4"
+                    Background="{StaticResource BgSecondaryBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1,0,0,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="PROPERTIES" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextMutedBrush}" Margin="12,10,12,8"
+                                />
+
+                    <StackPanel DockPanel.Dock="Top" Margin="12,0,12,8">
+                        <TextBlock Text="Name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4" />
+                        <TextBox Text="{Binding Editor.MacroName, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Text="Description" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,4" />
+                        <TextBox Text="{Binding Editor.MacroDescription, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True" Height="60" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+
+                        <TextBlock Text="Category" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,4" />
+                        <TextBox Text="{Binding Editor.MacroCategory, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Text="Repeat Count" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,4" />
+                        <TextBox Text="{Binding Editor.RepeatCount, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <TextBlock DockPanel.Dock="Top" Text="LIVE EVENTS" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextMutedBrush}" Margin="12,10,12,6"
+                                />
+
+                    <ListBox ItemsSource="{Binding LiveEvents}" Margin="4"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource EventToDisplay}}"
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- ═══ Status Bar ═══════════════════════════════════════ -->
+        <Border Grid.Row="2"
+                Background="{StaticResource BgSecondaryBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="12,6">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="{Binding StatusText}"
+                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Border Background="{StaticResource BgTertiaryBrush}" CornerRadius="4" Padding="8,2" Margin="4,0">
+                        <TextBlock Text="{Binding AppState}" FontSize="11"
+                                   Foreground="{StaticResource AccentCyanBrush}" FontWeight="SemiBold" />
+                    </Border>
+                    <TextBlock Text="ESC = Emergency Stop" FontSize="11"
+                               Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<SyntaxDefinition name="MacroScript"
+                  xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <!-- Colors -->
+  <Color name="Comment" foreground="#6A9955" fontStyle="italic" />
+  <Color name="KeyboardCommand" foreground="#569CD6" fontWeight="bold" />
+  <Color name="MouseCommand" foreground="#C586C0" fontWeight="bold" />
+  <Color name="TimingCommand" foreground="#DCDCAA" fontWeight="bold" />
+  <Color name="ControlFlow" foreground="#D16969" fontWeight="bold" />
+  <Color name="Variable" foreground="#4EC9B0" />
+  <Color name="WindowCommand" foreground="#CE9178" fontWeight="bold" />
+  <Color name="ImageCommand" foreground="#B5CEA8" fontWeight="bold" />
+  <Color name="MiscCommand" foreground="#9CDCFE" fontWeight="bold" />
+  <Color name="String" foreground="#CE9178" />
+  <Color name="Number" foreground="#B5CEA8" />
+  <Color name="Label" foreground="#DCDCAA" fontWeight="bold" />
+
+  <RuleSet>
+    <!-- Comments -->
+    <Span color="Comment" begin="//" />
+
+    <!-- Strings -->
+    <Span color="String">
+      <Begin>"</Begin>
+      <End>"</End>
+    </Span>
+
+    <!-- Variables: {varname} -->
+    <Rule color="Variable">\{[a-zA-Z_]\w*\}</Rule>
+
+    <!-- Numbers -->
+    <Rule color="Number">\b\d+(\.\d+)?\b</Rule>
+
+    <!-- Keyboard commands -->
+    <Keywords color="KeyboardCommand">
+      <Word>KeyDown</Word>
+      <Word>KeyUp</Word>
+      <Word>KeyPress</Word>
+      <Word>TypeText</Word>
+      <Word>KeyCombo</Word>
+    </Keywords>
+
+    <!-- Mouse commands -->
+    <Keywords color="MouseCommand">
+      <Word>MouseMove</Word>
+      <Word>MouseDown</Word>
+      <Word>MouseUp</Word>
+      <Word>MouseClick</Word>
+      <Word>MouseDoubleClick</Word>
+      <Word>MouseScroll</Word>
+      <Word>MouseDrag</Word>
+    </Keywords>
+
+    <!-- Timing -->
+    <Keywords color="TimingCommand">
+      <Word>Delay</Word>
+      <Word>RandomDelay</Word>
+    </Keywords>
+
+    <!-- Control flow -->
+    <Keywords color="ControlFlow">
+      <Word>Repeat</Word>
+      <Word>EndRepeat</Word>
+      <Word>While</Word>
+      <Word>EndWhile</Word>
+      <Word>If</Word>
+      <Word>Else</Word>
+      <Word>EndIf</Word>
+      <Word>Goto</Word>
+      <Word>Label</Word>
+      <Word>Stop</Word>
+      <Word>SetVar</Word>
+      <Word>IncVar</Word>
+    </Keywords>
+
+    <!-- Window management -->
+    <Keywords color="WindowCommand">
+      <Word>ActivateWindow</Word>
+      <Word>WaitForWindow</Word>
+      <Word>RunProgram</Word>
+      <Word>CloseWindow</Word>
+      <Word>MinWindow</Word>
+      <Word>MaxWindow</Word>
+      <Word>RestoreWindow</Word>
+      <Word>SetClipboard</Word>
+      <Word>GetClipboard</Word>
+    </Keywords>
+
+    <!-- Image / OCR -->
+    <Keywords color="ImageCommand">
+      <Word>WaitForImage</Word>
+      <Word>ClickImage</Word>
+      <Word>IfImageExists</Word>
+      <Word>OCRGetText</Word>
+      <Word>IfTextOnScreen</Word>
+    </Keywords>
+
+    <!-- Miscellaneous -->
+    <Keywords color="MiscCommand">
+      <Word>PlaySound</Word>
+      <Word>ShowMessage</Word>
+      <Word>MsgBox</Word>
+    </Keywords>
+
+    <!-- Labels (word followed by colon) -->
+    <Rule color="Label">\b[a-zA-Z_]\w*:</Rule>
+
+    <!-- Mouse button keywords -->
+    <Keywords color="Variable">
+      <Word>Left</Word>
+      <Word>Right</Word>
+      <Word>Middle</Word>
+      <Word>X1</Word>
+      <Word>X2</Word>
+    </Keywords>
+  </RuleSet>
+</SyntaxDefinition>
