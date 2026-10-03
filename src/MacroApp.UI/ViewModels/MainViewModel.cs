@@ -8,6 +8,7 @@ using MacroApp.Core;
 using MacroApp.Core.Models;
 using MacroApp.Core.Playback;
 using MacroApp.Core.Recording;
+using MacroApp.Core.Settings;
 using MacroApp.NativeInterop;
 
 namespace MacroApp.UI.ViewModels;
@@ -30,6 +31,21 @@ public partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _countdownCts;
     private int _emergencyStopKey = AppConstants.DefaultEmergencyStopKey;
     private readonly Dictionary<int, Action> _hotKeyActions = new();
+    private bool _windowAttached;
+
+    /// <summary>Where settings.json lives (next to the Macros folder).</summary>
+    public static string SettingsPath { get; } =
+        System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
+
+    /// <summary>The settings currently in effect. Treat as read-only; change them with <see cref="ApplySettings"/>.</summary>
+    public AppSettings Settings { get; private set; } = AppSettingsStore.Load(SettingsPath);
+
+    /// <summary>Status bar reminder of the current hotkeys.</summary>
+    public string HotkeyHint =>
+        $"{Settings.RecordHotkey} record · {Settings.PlayHotkey} play · {Settings.StopHotkey} stop · {Settings.EmergencyStopKey} emergency stop";
+
+    /// <summary>Folder macros are stored in.</summary>
+    public string StoragePath => _macroManager.StoragePath;
 
     // ── Observable State ────────────────────────────────────────────
 
@@ -148,6 +164,8 @@ public partial class MainViewModel : ObservableObject
                 _dispatcher.BeginInvoke(action);
         });
 
+        ApplyRecordingSettings();
+
         // Blink timer for recording indicator
         _blinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AppConstants.RecordingBlinkIntervalMs) };
         _blinkTimer.Tick += (_, _) => RecordingIndicatorVisible = !RecordingIndicatorVisible;
@@ -175,31 +193,126 @@ public partial class MainViewModel : ObservableObject
     {
         _recordingEngine.IgnoredWindow = hwnd;
         _hotKeyManager.SetWindowHandle(hwnd);
+        _windowAttached = true;
+        RegisterHotKeys();
+    }
+
+    /// <summary>
+    /// Saves new settings and puts them into effect straight away (hotkeys included).
+    /// </summary>
+    public void ApplySettings(AppSettings settings)
+    {
+        var errors = settings.Validate();
+        if (errors.Count > 0)
+            throw new ArgumentException(string.Join("\n", errors));
+
+        Settings = settings.Clone();
+        AppSettingsStore.Save(Settings, SettingsPath);
+        OnPropertyChanged(nameof(HotkeyHint));
+        StartupRegistration.Apply(Settings.StartWithWindows);
+
+        ApplyRecordingSettings();
+        StatusText = "Settings saved";
+        RegisterHotKeys();
+    }
+
+    /// <summary>Unregisters the global hotkeys until <see cref="ResumeHotKeys"/>.</summary>
+    public void SuspendHotKeys()
+    {
+        _hotKeyManager.UnregisterAll();
+        _hotKeyActions.Clear();
+    }
+
+    public void ResumeHotKeys() => RegisterHotKeys();
+
+    private void ApplyRecordingSettings()
+    {
+        _recordingEngine.Settings.CountdownSeconds = Settings.CountdownSeconds;
+        _recordingEngine.Settings.MouseMovementThreshold = Settings.MouseMoveThreshold;
+        _emergencyStopKey = Settings.EmergencyStopVirtualKey;
+    }
+
+    private void RegisterHotKeys()
+    {
+        if (!_windowAttached) return;
+
+        _hotKeyManager.UnregisterAll();
+        _hotKeyActions.Clear();
 
         var failed = new List<string>();
-        RegisterHotKey(AppConstants.DefaultRecordKey, ToggleRecording, failed);
-        RegisterHotKey(AppConstants.DefaultPlayKey, TogglePlayback, failed);
-        RegisterHotKey(AppConstants.DefaultStopKey, StopEverything, failed);
-
-        if (failed.Count > 0)
-            StatusText = $"Couldn't register {string.Join(", ", failed)} — another program is probably using them";
-    }
-
-    private void RegisterHotKey(int virtualKey, Action action, List<string> failed)
-    {
-        int id = _hotKeyManager.Register(new HotKeyBinding(0, (uint)virtualKey));
-        if (id < 0)
+        var bindings = new[]
         {
-            failed.Add(KeyNames.Format(virtualKey));
-            return;
+            (Settings.RecordBinding, (Action)ToggleRecording),
+            (Settings.PlayBinding, TogglePlayback),
+            (Settings.StopBinding, StopEverything),
+        };
+
+        foreach (var (binding, action) in bindings)
+        {
+            int id = _hotKeyManager.Register(binding);
+            if (id < 0)
+                failed.Add(binding.ToString());
+            else
+                _hotKeyActions[id] = action;
         }
 
-        _hotKeyActions[id] = action;
-
         // The hotkeys still reach the low-level hook, so keep them out of recordings
-        if (!_recordingEngine.Settings.ExcludedKeys.Contains(virtualKey))
-            _recordingEngine.Settings.ExcludedKeys.Add(virtualKey);
+        _recordingEngine.IgnoredHotkeys = bindings.Select(b => b.Item1).ToList();
+
+        if (failed.Count > 0)
+            StatusText = $"Couldn't register {string.Join(", ", failed)} — another program is probably using them. Pick different keys in Settings.";
     }
+
+    // ── Import / export ─────────────────────────────────────────────
+
+    /// <summary>Copies .mcr files into the library. Returns how many were imported.</summary>
+    public async Task<int> ImportAsync(IReadOnlyList<string> paths)
+    {
+        Macro? last = null;
+        var failures = new List<string>();
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                last = await _macroManager.ImportAsync(path);
+            }
+            catch (Exception ex)
+            {
+                App.Logger.Warning(ex, "Import failed for {Path}", path);
+                failures.Add($"{System.IO.Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+
+        MacroList.RefreshFromManager(_macroManager);
+        if (last != null)
+            MacroList.SelectedMacro = last;
+
+        int imported = paths.Count - failures.Count;
+        StatusText = failures.Count == 0
+            ? $"Imported {imported} macro{(imported == 1 ? "" : "s")}"
+            : $"Imported {imported}, failed: {string.Join("; ", failures)}";
+        return imported;
+    }
+
+    /// <summary>Writes the selected macro (with any unsaved editor changes) to <paramref name="path"/>.</summary>
+    public async Task ExportSelectedAsync(string path)
+    {
+        if (SelectedMacro == null) return;
+
+        FlushEditor(save: true);
+        await _macroManager.ExportAsync(SelectedMacro, path);
+        StatusText = $"Exported '{SelectedMacro.Name}' to {path}";
+    }
+
+    /// <summary>
+    /// Folder that relative paths in the selected macro's script are resolved against:
+    /// the folder its .mcr file is in.
+    /// </summary>
+    public string ScriptBaseDirectory =>
+        SelectedMacro?.FilePath is { } file
+            ? System.IO.Path.GetDirectoryName(file)!
+            : _macroManager.StoragePath;
 
     private void ToggleRecording()
     {
@@ -374,6 +487,7 @@ public partial class MainViewModel : ObservableObject
         var settings = macro.PlaybackSettings.Clone();
         settings.SpeedMultiplier = SelectedSpeed;
         settings.RepeatCount = Editor.RepeatCount;
+        settings.EmergencyStopKey = Settings.EmergencyStopVirtualKey;
 
         EnsureEmergencyStopHook(settings.EmergencyStopKey);
 
@@ -384,7 +498,7 @@ public partial class MainViewModel : ObservableObject
             if (!string.IsNullOrWhiteSpace(Editor.ScriptText))
             {
                 _activePlayback = _scriptPlaybackEngine;
-                _scriptPlaybackEngine.Start(Editor.ScriptText, settings);
+                _scriptPlaybackEngine.Start(Editor.ScriptText, settings, Editor.BreakpointLines, ScriptBaseDirectory);
             }
             else if (macro.Events.Count > 0)
             {
@@ -563,9 +677,17 @@ public partial class MainViewModel : ObservableObject
             CurrentPlaybackIndex = args.CurrentEventIndex;
             CurrentRepeat = args.CurrentRepeat;
             string repeat = args.TotalRepeats < 0 ? $"{args.CurrentRepeat}/∞" : $"{args.CurrentRepeat}/{args.TotalRepeats}";
-            StatusText = args.Line > 0
-                ? $"Running line {args.Line} (repeat {repeat})"
-                : $"Playing event {args.CurrentEventIndex + 1}/{args.TotalEvents} (repeat {repeat})";
+            if (args.State == PlaybackState.StepThrough && args.Line > 0)
+            {
+                Editor.HighlightedLine = args.Line;
+                StatusText = $"Paused before line {args.Line} — Step runs it, ⏸ resumes";
+            }
+            else
+            {
+                StatusText = args.Line > 0
+                    ? $"Running line {args.Line} (repeat {repeat})"
+                    : $"Playing event {args.CurrentEventIndex + 1}/{args.TotalEvents} (repeat {repeat})";
+            }
         });
     }
 

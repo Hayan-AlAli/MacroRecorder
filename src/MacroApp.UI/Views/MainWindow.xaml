@@ -66,7 +66,7 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <!-- Record -->
                     <Button Style="{StaticResource PrimaryButton}" Command="{Binding RecordCommand}"
-                            Padding="12,6" Margin="3,0" ToolTip="Start Recording (F9)">
+                            Padding="12,6" Margin="3,0" ToolTip="Start recording (hotkeys are listed in the status bar)">
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="10" Height="10" Fill="{StaticResource AccentRedBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
                             <TextBlock Text="Record" VerticalAlignment="Center" />
@@ -75,7 +75,7 @@
 
                     <!-- Stop Recording -->
                     <Button Style="{StaticResource DangerButton}" Command="{Binding StopRecordingCommand}"
-                            Padding="12,6" Margin="3,0" ToolTip="Stop recording (F9 or F11)">
+                            Padding="12,6" Margin="3,0" ToolTip="Stop recording">
                         <StackPanel Orientation="Horizontal">
                             <Rectangle Width="10" Height="10" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
                             <TextBlock Text="Stop Rec" VerticalAlignment="Center" />
@@ -86,7 +86,7 @@
 
                     <!-- Play -->
                     <Button Style="{StaticResource PrimaryButton}" Command="{Binding PlayCommand}"
-                            Background="{StaticResource AccentGreenBrush}" Padding="12,6" Margin="3,0" ToolTip="Play Macro (F10)">
+                            Background="{StaticResource AccentGreenBrush}" Padding="12,6" Margin="3,0" ToolTip="Play the selected macro">
                         <StackPanel Orientation="Horizontal">
                             <Polygon Points="0,0 10,6 0,12" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
                             <TextBlock Text="Play" VerticalAlignment="Center" />
@@ -107,7 +107,7 @@
 
                     <!-- Stop Playback -->
                     <Button Style="{StaticResource DangerButton}" Command="{Binding StopPlaybackCommand}"
-                            Padding="12,6" Margin="3,0" ToolTip="Stop playback (F10, F11 or Esc)">
+                            Padding="12,6" Margin="3,0" ToolTip="Stop playback">
                         <StackPanel Orientation="Horizontal">
                             <Rectangle Width="10" Height="10" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
                             <TextBlock Text="Stop" VerticalAlignment="Center" />
@@ -126,6 +126,28 @@
                     <Button Style="{StaticResource GhostButton}" Command="{Binding SaveMacroCommand}"
                             Padding="10,6" Margin="3,0" ToolTip="Save (Ctrl+S)">
                         <TextBlock Text="💾 Save" />
+                    </Button>
+
+                    <Button Style="{StaticResource GhostButton}" Click="Import_Click"
+                            Padding="10,6" Margin="3,0" ToolTip="Import .mcr files into the library">
+                        <TextBlock Text="Import" />
+                    </Button>
+
+                    <Button Style="{StaticResource GhostButton}" Click="Export_Click"
+                            Padding="10,6" Margin="3,0" ToolTip="Save the selected macro as a .mcr file somewhere else">
+                        <TextBlock Text="Export" />
+                    </Button>
+
+                    <Rectangle Width="1" Fill="{StaticResource BorderBrush}" Margin="8,4" />
+
+                    <Button Style="{StaticResource GhostButton}" Click="CaptureImage_Click"
+                            Padding="10,6" Margin="3,0" ToolTip="Grab part of the screen and add a ClickImage line for it">
+                        <TextBlock Text="Capture image" />
+                    </Button>
+
+                    <Button Style="{StaticResource GhostButton}" Click="Settings_Click"
+                            Padding="10,6" Margin="3,0" ToolTip="Hotkeys and recording options">
+                        <TextBlock Text="⚙ Settings" />
                     </Button>
                 </StackPanel>
             </DockPanel>
@@ -303,7 +325,7 @@
                         <TextBlock Text="{Binding AppState}" FontSize="11"
                                    Foreground="{StaticResource AccentCyanBrush}" FontWeight="SemiBold" />
                     </Border>
-                    <TextBlock Text="F9 record · F10 play · F11 stop · Esc emergency stop" FontSize="11"
+                    <TextBlock Text="{Binding HotkeyHint}" FontSize="11"
                                Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
                 </StackPanel>
             </DockPanel>

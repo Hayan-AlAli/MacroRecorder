@@ -5,6 +5,8 @@ using MacroApp.Core;
 using MacroApp.Core.Models;
 using MacroApp.Core.Playback;
 using MacroApp.Core.Recording;
+using MacroApp.Core.Vision;
+using MacroApp.ImageMatch;
 using MacroApp.NativeInterop;
 using MacroApp.UI.ViewModels;
 
@@ -65,13 +67,13 @@ public partial class App : Application
         services.AddSingleton(sp => new MacroManager(storagePath));
         services.AddSingleton<RecordingEngine>();
         services.AddSingleton<PlaybackEngine>();
+        services.AddSingleton<IScreenVision, ScreenVision>();
         services.AddSingleton<ScriptPlaybackEngine>();
 
         // ViewModels
         services.AddSingleton<MainViewModel>();
         services.AddTransient<MacroListViewModel>();
         services.AddTransient<EditorViewModel>();
-        services.AddTransient<SettingsViewModel>();
     }
 
     protected override void OnExit(ExitEventArgs e)

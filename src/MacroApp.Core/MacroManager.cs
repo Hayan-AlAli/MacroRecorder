@@ -38,6 +38,9 @@ public partial class MacroManager : ObservableObject
     [ObservableProperty]
     private string _searchFilter = string.Empty;
 
+    /// <summary>Folder the library lives in.</summary>
+    public string StoragePath => _storagePath;
+
     public MacroManager(string storagePath)
     {
         _storagePath = storagePath;
@@ -172,6 +175,14 @@ public partial class MacroManager : ObservableObject
     public async Task<Macro> ImportAsync(string filePath)
     {
         var macro = await MacroSerializer.LoadAsync(filePath);
+
+        // Importing the same file twice (or a file exported from this library) would give
+        // two macros with one Id, so the second one gets a fresh Id.
+        bool idTaken;
+        lock (_lock) idTaken = Macros.Any(m => m.Id == macro.Id);
+        if (idTaken)
+            macro = macro.Clone(keepName: true);
+
         string destPath = Path.Combine(_storagePath, macro.Category,
             SanitizeFileName(macro.Name) + "_" + macro.Id.ToString("N")[..8] + AppConstants.MacroFileExtension);
         await MacroSerializer.SaveAsync(macro, destPath);
@@ -184,7 +195,7 @@ public partial class MacroManager : ObservableObject
     /// </summary>
     public async Task ExportAsync(Macro macro, string destinationPath)
     {
-        await MacroSerializer.SaveAsync(macro, destinationPath);
+        await MacroSerializer.WriteAsync(macro, destinationPath);
     }
 
     /// <summary>

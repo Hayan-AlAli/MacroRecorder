@@ -42,6 +42,10 @@ public partial class EditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _isDirty;
 
+    /// <summary>Script lines with a breakpoint. The view keeps this in step with the editor margin.</summary>
+    [ObservableProperty]
+    private IReadOnlyList<int> _breakpointLines = Array.Empty<int>();
+
     private Macro? _currentMacro;
 
     /// <summary>
@@ -54,6 +58,7 @@ public partial class EditorViewModel : ObservableObject
         MacroDescription = macro.Description;
         MacroCategory = macro.Category;
         ScriptText = macro.ScriptText;
+        BreakpointLines = macro.Breakpoints.ToList();
         RepeatCount = macro.PlaybackSettings.RepeatCount;
         SpeedMultiplier = macro.PlaybackSettings.SpeedMultiplier;
         IsDirty = false;
@@ -70,6 +75,7 @@ public partial class EditorViewModel : ObservableObject
         macro.Description = MacroDescription;
         macro.Category = MacroCategory;
         macro.ScriptText = ScriptText;
+        macro.Breakpoints = BreakpointLines.ToList();
         macro.PlaybackSettings.RepeatCount = RepeatCount;
         macro.PlaybackSettings.SpeedMultiplier = SpeedMultiplier;
         macro.MarkModified();
@@ -82,6 +88,7 @@ public partial class EditorViewModel : ObservableObject
     }
 
     partial void OnMacroNameChanged(string value) => IsDirty = true;
+    partial void OnBreakpointLinesChanged(IReadOnlyList<int> value) => IsDirty = true;
     partial void OnMacroDescriptionChanged(string value) => IsDirty = true;
 
     [RelayCommand]

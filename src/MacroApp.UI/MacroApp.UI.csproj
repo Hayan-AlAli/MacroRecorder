@@ -2,13 +2,15 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +27,7 @@
     <ProjectReference Include="..\MacroApp.Core\MacroApp.Core.csproj" />
     <ProjectReference Include="..\MacroApp.NativeInterop\MacroApp.NativeInterop.csproj" />
     <ProjectReference Include="..\MacroApp.Scripting\MacroApp.Scripting.csproj" />
+    <ProjectReference Include="..\MacroApp.ImageMatch\MacroApp.ImageMatch.csproj" />
   </ItemGroup>
 
   <ItemGroup>

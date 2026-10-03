@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="MacroApp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MacroApp.NativeInterop\MacroApp.NativeInterop.csproj" />
     <ProjectReference Include="..\MacroApp.Scripting\MacroApp.Scripting.csproj" />
   </ItemGroup>

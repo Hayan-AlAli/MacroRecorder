@@ -68,6 +68,15 @@ public sealed class RecordingEngine : IDisposable
     public IntPtr IgnoredWindow { get; set; }
 
     /// <summary>
+    /// The app's own global hotkeys. Pressing one (with exactly its modifiers held) isn't
+    /// recorded, but the same key pressed on its own still is.
+    /// </summary>
+    public IReadOnlyList<HotKeyBinding> IgnoredHotkeys { get; set; } = Array.Empty<HotKeyBinding>();
+
+    // Keys whose key-down was dropped as a hotkey, so the matching key-up is dropped too
+    private readonly HashSet<int> _suppressedKeys = new();
+
+    /// <summary>
     /// Gets the count of recorded events.
     /// </summary>
     public int EventCount
@@ -108,6 +117,7 @@ public sealed class RecordingEngine : IDisposable
         }
 
         lock (_lock) _recordedEvents.Clear();
+        _suppressedKeys.Clear();
 
         // The hooks may already be running for the emergency-stop key, so they always
         // capture both devices; KeyboardOnly/MouseOnly are applied in FilterEvent instead.
@@ -173,6 +183,7 @@ public sealed class RecordingEngine : IDisposable
             result = new List<InputEvent>(_recordedEvents);
             _recordedEvents.Clear();
         }
+        TrimTrailingModifierPresses(result);
 
         SetState(RecordingState.Idle);
         return result;
@@ -186,6 +197,8 @@ public sealed class RecordingEngine : IDisposable
         if (raw.IsInjected) return false;
 
         if (IsTargetingIgnoredWindow(raw)) return false;
+
+        if (IsHotkeyPress(raw)) return false;
 
         // Keyboard-only mode
         if (Settings.KeyboardOnly && IsMouseEvent(raw.EventType)) return false;
@@ -208,6 +221,55 @@ public sealed class RecordingEngine : IDisposable
 
         return true;
     }
+
+    private bool IsHotkeyPress(RawInputEvent raw)
+    {
+        if (!raw.VirtualKeyCode.HasValue || !IsKeyboardEvent(raw.EventType)) return false;
+        int vk = raw.VirtualKeyCode.Value;
+
+        if (raw.EventType is RawInputEventType.KeyUp or RawInputEventType.SysKeyUp)
+            return _suppressedKeys.Remove(vk);
+
+        uint held = CurrentModifiers();
+        if (IgnoredHotkeys.Any(h => h.VirtualKey == vk && h.Modifiers == held))
+        {
+            _suppressedKeys.Add(vk);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static uint CurrentModifiers()
+    {
+        static bool Down(int vk) => (NativeMethods.GetAsyncKeyState(vk) & 0x8000) != 0;
+
+        uint mods = 0;
+        if (Down(0x11)) mods |= NativeConstants.MOD_CONTROL;
+        if (Down(0x12)) mods |= NativeConstants.MOD_ALT;
+        if (Down(0x10)) mods |= NativeConstants.MOD_SHIFT;
+        if (Down(0x5B) || Down(0x5C)) mods |= NativeConstants.MOD_WIN;
+        return mods;
+    }
+
+    /// <summary>
+    /// Drops modifier key-downs at the very end of a recording. They're what's left over from
+    /// pressing a stop hotkey like Ctrl+F9 and would otherwise hold Ctrl for the rest of playback.
+    /// </summary>
+    internal static void TrimTrailingModifierPresses(List<InputEvent> events)
+    {
+        while (events.Count > 0 &&
+               events[^1] is { Type: InputEventType.KeyDown, VirtualKeyCode: { } vk } &&
+               IsModifierKey(vk))
+        {
+            events.RemoveAt(events.Count - 1);
+        }
+    }
+
+    private static bool IsModifierKey(int vk) => vk is
+        0x10 or 0x11 or 0x12 or      // Shift, Ctrl, Alt
+        >= 0xA0 and <= 0xA5 or       // left/right Shift, Ctrl, Alt
+        0x5B or 0x5C;                // Windows keys
 
     private bool IsTargetingIgnoredWindow(RawInputEvent raw)
     {

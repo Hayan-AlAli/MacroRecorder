@@ -298,12 +298,17 @@ public sealed class ScriptInterpreter
 
             // ── Image ───────────────────────────────────────────
             case WaitForImageNode n:
-                _executor.WaitForImage(_variables.Interpolate(n.ImagePath),
-                    n.TimeoutMs != null ? _variables.ResolveInt(n.TimeoutMs) : 30000,
-                    n.Threshold != null ? _variables.ResolveDouble(n.Threshold) : 0.9);
+            {
+                string image = _variables.Interpolate(n.ImagePath);
+                int timeout = n.TimeoutMs != null ? _variables.ResolveInt(n.TimeoutMs) : 30000;
+                double threshold = n.Threshold != null ? _variables.ResolveDouble(n.Threshold) : 0.9;
+                if (!_executor.WaitForImage(image, timeout, threshold))
+                    throw new ScriptRuntimeException(n.Line, $"Timed out after {timeout} ms waiting for '{image}' to appear.");
                 break;
+            }
             case ClickImageNode n:
-                _executor.ClickImage(_variables.Interpolate(n.ImagePath), n.Button);
+                _executor.ClickImage(_variables.Interpolate(n.ImagePath),
+                    n.Button != null ? _variables.Resolve(n.Button) : null);
                 break;
             case IfImageExistsNode n:
                 if (_executor.ImageExists(_variables.Interpolate(n.ImagePath)))

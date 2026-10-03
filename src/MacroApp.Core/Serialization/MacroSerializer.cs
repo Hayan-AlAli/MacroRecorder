@@ -19,6 +19,17 @@ public static class MacroSerializer
     /// </summary>
     public static async Task SaveAsync(Macro macro, string filePath)
     {
+        await WriteAsync(macro, filePath);
+        macro.FilePath = filePath;
+        macro.IsDirty = false;
+    }
+
+    /// <summary>
+    /// Writes a copy of the macro to <paramref name="filePath"/> without touching the macro itself,
+    /// so exporting doesn't move where the macro is stored.
+    /// </summary>
+    public static async Task WriteAsync(Macro macro, string filePath)
+    {
         var doc = SerializeToXml(macro);
         string directory = Path.GetDirectoryName(filePath)!;
         Directory.CreateDirectory(directory);
@@ -35,8 +46,6 @@ public static class MacroSerializer
 
             // Atomic rename
             File.Move(tempPath, filePath, overwrite: true);
-            macro.FilePath = filePath;
-            macro.IsDirty = false;
         }
         catch
         {
@@ -87,6 +96,9 @@ public static class MacroSerializer
                 SerializeHotKey(macro.HotKey),
                 SerializePlaybackSettings(macro.PlaybackSettings),
                 new XElement(Ns + "ScriptText", new XCData(macro.ScriptText ?? string.Empty)),
+                macro.Breakpoints.Count > 0
+                    ? new XElement(Ns + "Breakpoints", string.Join(" ", macro.Breakpoints.Distinct().Order()))
+                    : null,
                 SerializeEvents(macro.Events)
             ));
 
@@ -186,6 +198,13 @@ public static class MacroSerializer
 
         // ScriptText
         macro.ScriptText = (string?)root.Element(ns + "ScriptText") ?? string.Empty;
+
+        // Breakpoints: space-separated line numbers
+        var breakpoints = ((string?)root.Element(ns + "Breakpoints") ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int line) ? line : 0)
+            .Where(line => line > 0);
+        macro.Breakpoints = breakpoints.Distinct().Order().ToList();
 
         // Events
         var eventsEl = root.Element(ns + "Events");

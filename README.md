@@ -17,7 +17,8 @@ You can tidy that up by hand, wrap it in a `Repeat`, add variables, and so on.
 
 ## Building and running
 
-You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+You need Windows 10 (version 1809 or later) or Windows 11, and the
+[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 ```powershell
 dotnet run --project src/MacroApp.UI
@@ -41,7 +42,9 @@ dotnet test
    window has focus.
 
 The hotkeys are global, so you can start and stop things without switching back to the
-app. If another program has already claimed F9/F10/F11, the status bar will tell you.
+app. These are the defaults; you can change them under **Settings**, and the status bar
+always shows the current ones. If another program has already claimed a hotkey, the
+status bar tells you and you can pick a different one.
 
 | Key | What it does |
 | --- | --- |
@@ -52,6 +55,10 @@ app. If another program has already claimed F9/F10/F11, the status bar will tell
 | Ctrl+S | Save the current macro |
 | Ctrl+N | New macro |
 
+**Settings** also has the recording countdown, how far the mouse has to move before a
+move gets recorded, and an option to start MacroRecorder when you sign in to Windows.
+They're saved to `settings.json` next to the executable.
+
 Some details worth knowing:
 
 - Clicks and typing inside MacroRecorder's own window aren't recorded, so you won't get
@@ -61,12 +68,18 @@ Some details worth knowing:
 - Stopping halfway through a macro releases any keys or mouse buttons it was holding,
   so you don't end up with a stuck Shift.
 - The speed slider scales every delay. Repeat count `-1` loops until you stop it.
-- **Step** pauses before each line; press it again to run the next one.
+- **Step** pauses before each line; press it again to run the next one. **⏸** carries on
+  at normal speed.
+- Click in the strip left of the line numbers to set a breakpoint (a red dot). Playback
+  pauses before that line and highlights it, then Step and ⏸ work as above. Breakpoints
+  are saved with the macro and move with their line when you edit around them.
 - Recording into a macro that's already selected replaces its script. Make a new macro
   first if you want to keep the old one.
 
 Macros are saved as XML `.mcr` files in a `Macros` folder next to the executable, grouped
-by category. Logs go to `logs/`.
+by category. Logs go to `logs/`. **Import** copies `.mcr` files into the library and
+**Export** saves the selected macro wherever you want, which is how you move macros
+between machines.
 
 ## Script reference
 
@@ -156,6 +169,33 @@ ShowMessage "Hello"
 MsgBox "Hello" "Title"
 ```
 
+**Images and on-screen text**
+
+```
+WaitForImage "images/ok.png" 10000 0.9   // timeout in ms, then how close a match has to be (0-1)
+ClickImage "images/ok.png"               // clicks the middle of it; add Right/Middle for other buttons
+IfImageExists "images/error.png"
+  Stop
+EndIf
+
+OCRGetText total 1200 80 300 40          // reads text from x y width height into {total}
+OCRGetText everything                    // no region = every monitor
+IfTextOnScreen "Saved"
+  MsgBox "it saved"
+EndIf
+```
+
+The easy way to get an image is the **Capture image** button: drag a box around the
+thing you want to click and it's saved to an `images` folder next to the macro, with a
+`ClickImage` line added to the script. Relative paths in a script (images, sounds) are
+relative to the macro's own folder, so a macro and its images can be copied together.
+
+Image matching is OpenCV template matching, so it wants the thing to look the same as
+when you captured it: same size, same theme, same display scaling. If it stops matching,
+recapture it or lower the threshold a little. Text reading uses the OCR engine built into
+Windows and needs an OCR-capable language installed, which English and most other
+Windows display languages already are.
+
 The editor checks the script as you type and shows errors with line numbers at the
 bottom. If something fails while it runs (a window that isn't there, a key name it
 doesn't know), playback stops and the status bar says which line it was.
@@ -164,24 +204,17 @@ doesn't know), playback stops and the status bar says which line it was.
 
 ```
 src/
-  MacroApp.NativeInterop   Win32 P/Invoke: low-level hooks, SendInput, hotkeys, key names
+  MacroApp.NativeInterop   Win32 P/Invoke: low-level hooks, SendInput, hotkeys, key names, screen capture
   MacroApp.Scripting       Lexer, parser and interpreter for the script language (no Windows deps)
-  MacroApp.Core            Recording, the two playback engines, macro storage and serialization
+  MacroApp.Core            Recording, the two playback engines, macro storage, settings
+  MacroApp.ImageMatch      Image matching (OpenCvSharp) and OCR (Windows.Media.Ocr)
   MacroApp.UI              WPF app (MVVM with CommunityToolkit.Mvvm, AvalonEdit for the editor)
-  MacroApp.ImageMatch      Placeholder for OpenCV image matching, not wired up yet
 tests/
-  MacroApp.Tests           xUnit tests for the scripting, serialization and key-name code
+  MacroApp.Tests           xUnit tests for scripting, playback, storage, settings and key names
 ```
 
 Recording uses `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hooks on their own thread with a message
 loop. Playback runs on a background thread and uses `SendInput`, with a sleep-then-spin
-delay so timing is accurate to well under a millisecond.
-
-## Not done yet
-
-- `WaitForImage`, `ClickImage`, `IfImageExists`, `OCRGetText` and `IfTextOnScreen` parse
-  fine but fail at run time. The plan is OpenCV template matching in `MacroApp.ImageMatch`.
-- The hotkeys are fixed to F9/F10/F11. There's a settings view model for changing them
-  but no settings window or persistence behind it yet.
-- No import/export buttons in the UI, although `MacroManager` supports both.
-- Breakpoints exist in the file format and the event player but can't be set from the editor.
+delay so timing is accurate to well under a millisecond. The app is per-monitor DPI aware,
+so every coordinate it records, clicks or captures is a real screen pixel, including on
+scaled and mixed-DPI displays.

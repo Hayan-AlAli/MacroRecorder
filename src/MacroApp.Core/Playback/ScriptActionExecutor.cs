@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using MacroApp.Core.Models;
+using MacroApp.Core.Vision;
 using MacroApp.NativeInterop;
 using MacroApp.Scripting.Interpreter;
 
@@ -15,17 +16,33 @@ namespace MacroApp.Core.Playback;
 internal sealed class ScriptActionExecutor : IActionExecutor
 {
     private const int WindowPollIntervalMs = 100;
+    private const int ImagePollIntervalMs = 250;
+    private const double DefaultImageThreshold = 0.9;
 
     private readonly InputSimulator _input;
     private readonly MacroPlaybackSettings _settings;
     private readonly CancellationToken _ct;
+    private readonly IScreenVision? _vision;
+    private readonly string? _baseDirectory;
 
-    public ScriptActionExecutor(InputSimulator input, MacroPlaybackSettings settings, CancellationToken ct)
+    public ScriptActionExecutor(InputSimulator input, MacroPlaybackSettings settings, CancellationToken ct,
+        IScreenVision? vision = null, string? baseDirectory = null)
     {
         _input = input;
         _settings = settings;
         _ct = ct;
+        _vision = vision;
+        _baseDirectory = baseDirectory;
     }
+
+    /// <summary>
+    /// Relative paths in a script are relative to the macro's own folder, so a macro and
+    /// its images folder can be copied around together.
+    /// </summary>
+    private string ResolvePath(string path) =>
+        Path.IsPathRooted(path) || string.IsNullOrEmpty(_baseDirectory)
+            ? path
+            : Path.GetFullPath(Path.Combine(_baseDirectory, path));
 
     private CoordinateMode Mode => _settings.CoordinateMode;
 
@@ -160,20 +177,68 @@ internal sealed class ScriptActionExecutor : IActionExecutor
     public void SetClipboard(string text) => Clipboard.SetText(text);
     public string GetClipboard() => Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
 
-    // ── Image / OCR (not built yet) ─────────────────────────────────
+    // ── Image matching / OCR ────────────────────────────────────────
 
-    public bool WaitForImage(string imagePath, int timeoutMs, double threshold) => throw ImageMatchingMissing();
-    public void ClickImage(string imagePath, string? button) => throw ImageMatchingMissing();
-    public bool ImageExists(string imagePath) => throw ImageMatchingMissing();
-    public string? OCRGetText(string? region) => throw new NotSupportedException("OCR isn't implemented yet.");
-    public bool TextOnScreen(string text) => throw new NotSupportedException("OCR isn't implemented yet.");
+    public bool WaitForImage(string imagePath, int timeoutMs, double threshold)
+    {
+        string path = RequireImage(imagePath);
+        var sw = Stopwatch.StartNew();
 
-    private static NotSupportedException ImageMatchingMissing() => new("Image matching isn't implemented yet.");
+        while (Vision.FindImage(path, threshold) == null)
+        {
+            if (sw.ElapsedMilliseconds >= timeoutMs) return false;
+            if (_ct.WaitHandle.WaitOne(ImagePollIntervalMs))
+                _ct.ThrowIfCancellationRequested();
+        }
+        return true;
+    }
+
+    public void ClickImage(string imagePath, string? button)
+    {
+        var match = Vision.FindImage(RequireImage(imagePath), DefaultImageThreshold)
+                    ?? throw new InvalidOperationException($"'{imagePath}' isn't on screen");
+
+        // Match positions are screen coordinates whatever the macro's coordinate mode is
+        _input.SendMouseClick(Button(button ?? "Left"), match.X, match.Y, CoordinateMode.Absolute);
+    }
+
+    public bool ImageExists(string imagePath) =>
+        Vision.FindImage(RequireImage(imagePath), DefaultImageThreshold) != null;
+
+    public string? OCRGetText(string? region)
+    {
+        ScreenRegion? area = null;
+        if (!string.IsNullOrWhiteSpace(region))
+        {
+            area = ScreenRegion.TryParse(region, out var parsed)
+                ? parsed
+                : throw new ArgumentException($"Region '{region}' should be \"x y width height\"");
+        }
+
+        return Vision.ReadText(area);
+    }
+
+    public bool TextOnScreen(string text) =>
+        Normalize(Vision.ReadText(null)).Contains(Normalize(text), StringComparison.OrdinalIgnoreCase);
+
+    // OCR splits lines and spaces unpredictably, so compare with all whitespace collapsed
+    private static string Normalize(string text) =>
+        string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private IScreenVision Vision =>
+        _vision ?? throw new NotSupportedException("Image matching and OCR aren't available in this build.");
+
+    private string RequireImage(string imagePath)
+    {
+        string path = ResolvePath(imagePath);
+        return File.Exists(path) ? path : throw new FileNotFoundException($"Image not found: {path}");
+    }
 
     // ── Misc ────────────────────────────────────────────────────────
 
     public void PlaySound(string filePath)
     {
+        filePath = ResolvePath(filePath);
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"Sound file not found: {filePath}");
 

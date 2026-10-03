@@ -35,6 +35,10 @@ public partial class Macro : ObservableObject
     [ObservableProperty]
     private string _scriptText = string.Empty;
 
+    /// <summary>Script lines (1-based) where playback pauses in step mode.</summary>
+    [ObservableProperty]
+    private List<int> _breakpoints = new();
+
     /// <summary>Playback configuration.</summary>
     [ObservableProperty]
     private MacroPlaybackSettings _playbackSettings = new();
@@ -68,18 +72,19 @@ public partial class Macro : ObservableObject
     }
 
     /// <summary>
-    /// Creates a deep copy of this macro.
+    /// Creates a deep copy of this macro with a new <see cref="Id"/>.
     /// </summary>
-    public Macro Clone()
+    public Macro Clone(bool keepName = false)
     {
         return new Macro
         {
-            Name = Name + " (Copy)",
+            Name = keepName ? Name : Name + " (Copy)",
             Description = Description,
             Category = Category,
             HotKey = HotKey,
             Events = new List<InputEvent>(Events),
             ScriptText = ScriptText,
+            Breakpoints = new List<int>(Breakpoints),
             PlaybackSettings = PlaybackSettings.Clone(),
             IsEnabled = IsEnabled
         };

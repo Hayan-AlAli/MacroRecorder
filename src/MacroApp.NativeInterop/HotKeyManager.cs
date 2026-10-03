@@ -23,6 +23,49 @@ public record HotKeyBinding(uint Modifiers, uint VirtualKey)
         parts.Add(KeyNames.Format((int)VirtualKey));
         return string.Join("+", parts);
     }
+
+    /// <summary>
+    /// Parses text like "F9", "Ctrl+Shift+R" or "alt + f4". Exactly one non-modifier key is required.
+    /// </summary>
+    public static bool TryParse(string? text, out HotKeyBinding? binding)
+    {
+        binding = null;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        uint modifiers = 0;
+        int? key = null;
+
+        foreach (var raw in text.Split('+'))
+        {
+            string part = raw.Trim();
+            uint modifier = part.ToLowerInvariant() switch
+            {
+                "ctrl" or "control" => NativeConstants.MOD_CONTROL,
+                "alt" => NativeConstants.MOD_ALT,
+                "shift" => NativeConstants.MOD_SHIFT,
+                "win" or "windows" => NativeConstants.MOD_WIN,
+                _ => 0
+            };
+
+            if (modifier != 0)
+            {
+                modifiers |= modifier;
+            }
+            else if (key == null && KeyNames.TryParse(part, out int vk))
+            {
+                key = vk;
+            }
+            else
+            {
+                return false; // unknown word, empty part ("Ctrl++"), or a second key
+            }
+        }
+
+        if (key == null) return false;
+
+        binding = new HotKeyBinding(modifiers, (uint)key.Value);
+        return true;
+    }
 }
 
 /// <summary>
@@ -92,6 +135,15 @@ public sealed class HotKeyManager : IDisposable
             return NativeMethods.UnregisterHotKey(_windowHandle, id);
         }
         return false;
+    }
+
+    /// <summary>
+    /// Unregisters every hotkey this manager registered.
+    /// </summary>
+    public void UnregisterAll()
+    {
+        foreach (var id in _registeredHotKeys.Keys.ToList())
+            Unregister(id);
     }
 
     /// <summary>

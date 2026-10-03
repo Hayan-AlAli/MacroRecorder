@@ -1,14 +1,17 @@
 using System.Globalization;
+using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Xml;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using Microsoft.Extensions.DependencyInjection;
 using MacroApp.Core.Models;
+using MacroApp.Core.Vision;
 using MacroApp.NativeInterop;
 using MacroApp.UI.ViewModels;
 
@@ -20,6 +23,8 @@ namespace MacroApp.UI.Views;
 public partial class MainWindow : Window
 {
     private MainViewModel? _viewModel;
+    private readonly BreakpointMargin _breakpoints = new();
+    private bool _syncingBreakpoints;
 
     public MainWindow()
     {
@@ -38,19 +43,37 @@ public partial class MainWindow : Window
         // Set up AvalonEdit syntax highlighting
         SetupSyntaxHighlighting();
 
+        ScriptEditor.TextArea.LeftMargins.Insert(0, _breakpoints);
+        _breakpoints.BreakpointsChanged += (_, _) => PushBreakpointsToViewModel();
+
         // Bind AvalonEdit text (AvalonEdit doesn't support standard binding)
         ScriptEditor.TextChanged += (_, _) =>
         {
             if (_viewModel?.Editor != null)
                 _viewModel.Editor.ScriptText = ScriptEditor.Text;
+
+            // Editing moves breakpoints along with their lines
+            PushBreakpointsToViewModel();
         };
 
         _viewModel.Editor.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName == nameof(EditorViewModel.ScriptText) &&
-                ScriptEditor.Text != _viewModel.Editor.ScriptText)
+            var editor = _viewModel.Editor;
+            switch (args.PropertyName)
             {
-                ScriptEditor.Text = _viewModel.Editor.ScriptText;
+                case nameof(EditorViewModel.ScriptText) when ScriptEditor.Text != editor.ScriptText:
+                    ScriptEditor.Text = editor.ScriptText;
+                    break;
+
+                case nameof(EditorViewModel.BreakpointLines) when !_breakpoints.Lines.SequenceEqual(editor.BreakpointLines):
+                    _syncingBreakpoints = true;
+                    _breakpoints.SetLines(editor.BreakpointLines);
+                    _syncingBreakpoints = false;
+                    break;
+
+                case nameof(EditorViewModel.HighlightedLine):
+                    ShowLine(editor.HighlightedLine);
+                    break;
             }
         };
 
@@ -90,6 +113,175 @@ public partial class MainWindow : Window
         // Line number colors
         ScriptEditor.TextArea.TextView.CurrentLineBackground = new SolidColorBrush(Color.FromArgb(30, 79, 142, 247));
         ScriptEditor.TextArea.TextView.CurrentLineBorder = new Pen(new SolidColorBrush(Color.FromArgb(50, 79, 142, 247)), 1);
+    }
+
+    private void PushBreakpointsToViewModel()
+    {
+        if (_syncingBreakpoints || _viewModel == null) return;
+
+        var lines = _breakpoints.Lines;
+        if (!lines.SequenceEqual(_viewModel.Editor.BreakpointLines))
+            _viewModel.Editor.BreakpointLines = lines;
+    }
+
+    /// <summary>Moves the caret to a line and scrolls it into view (used when stepping).</summary>
+    private void ShowLine(int line)
+    {
+        if (line < 1 || line > ScriptEditor.Document.LineCount) return;
+
+        var docLine = ScriptEditor.Document.GetLineByNumber(line);
+        ScriptEditor.TextArea.Caret.Offset = docLine.Offset;
+        ScriptEditor.Select(docLine.Offset, docLine.Length);
+        ScriptEditor.ScrollToLine(line);
+    }
+
+    // ── Toolbar actions that need dialogs ───────────────────────────
+
+    private async void Import_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel == null) return;
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import macros",
+            Filter = "Macro files (*.mcr)|*.mcr|All files (*.*)|*.*",
+            Multiselect = true,
+        };
+
+        if (dialog.ShowDialog(this) == true)
+            await _viewModel.ImportAsync(dialog.FileNames);
+    }
+
+    private async void Export_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.SelectedMacro is not { } macro)
+        {
+            if (_viewModel != null) _viewModel.StatusText = "Select a macro to export";
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export macro",
+            Filter = "Macro files (*.mcr)|*.mcr",
+            FileName = string.Concat(macro.Name.Split(Path.GetInvalidFileNameChars())) + AppConstants.MacroFileExtension,
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            await _viewModel.ExportSelectedAsync(dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            App.Logger.Error(ex, "Export failed");
+            MessageBox.Show(this, $"Couldn't export the macro:\n\n{ex.Message}", "Export", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel == null) return;
+
+        // Otherwise pressing the current hotkey in a hotkey box would trigger it instead of being typed
+        _viewModel.SuspendHotKeys();
+        try
+        {
+            var window = new SettingsWindow(_viewModel.Settings) { Owner = this };
+            if (window.ShowDialog() == true && window.Result != null)
+                _viewModel.ApplySettings(window.Result);
+        }
+        catch (Exception ex)
+        {
+            App.Logger.Error(ex, "Saving settings failed");
+            MessageBox.Show(this, $"Couldn't save settings:\n\n{ex.Message}", "Settings", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _viewModel.ResumeHotKeys();
+        }
+    }
+
+    /// <summary>
+    /// Lets the user drag out part of the screen, saves it as a PNG in the macro's images folder,
+    /// and inserts a ClickImage line for it below the caret.
+    /// </summary>
+    private async void CaptureImage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.SelectedMacro == null)
+        {
+            if (_viewModel != null) _viewModel.StatusText = "Select or create a macro first";
+            return;
+        }
+
+        var previousState = WindowState;
+        ScreenImage screen;
+        ScreenRegion? region = null;
+
+        // Get this window out of the way so it isn't in the screenshot
+        WindowState = WindowState.Minimized;
+        try
+        {
+            await Task.Delay(300);
+            screen = ScreenCapture.CaptureVirtualScreen();
+
+            var picker = new RegionPickerWindow();
+            if (picker.ShowDialog() == true)
+                region = picker.Selection;
+        }
+        finally
+        {
+            WindowState = previousState;
+            Activate();
+        }
+
+        if (region is not { } r) return;
+
+        try
+        {
+            string folder = Path.Combine(_viewModel.ScriptBaseDirectory, "images");
+            Directory.CreateDirectory(folder);
+            string fileName = $"image_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+            SavePng(screen.Crop(r.X, r.Y, r.Width, r.Height), Path.Combine(folder, fileName));
+
+            InsertLineBelowCaret($"ClickImage \"images/{fileName}\"");
+            _viewModel.StatusText = $"Saved images/{fileName} ({r.Width}×{r.Height}). Swap ClickImage for WaitForImage or IfImageExists if you need to.";
+        }
+        catch (Exception ex)
+        {
+            App.Logger.Error(ex, "Image capture failed");
+            _viewModel.StatusText = $"Couldn't save the image: {ex.Message}";
+        }
+    }
+
+    private static void SavePng(ScreenImage image, string path)
+    {
+        var bitmap = BitmapSource.Create(image.Width, image.Height, 96, 96, PixelFormats.Bgra32, null, image.Pixels, image.Stride);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
+    }
+
+    private void InsertLineBelowCaret(string text)
+    {
+        var document = ScriptEditor.Document;
+        var line = document.GetLineByOffset(ScriptEditor.CaretOffset);
+
+        if (line.Length == 0)
+        {
+            document.Insert(line.Offset, text);
+        }
+        else
+        {
+            document.Insert(line.EndOffset, "\n" + text);
+            line = line.NextLine!;
+        }
+
+        ScriptEditor.CaretOffset = line.EndOffset;
+        ScriptEditor.ScrollToLine(line.LineNumber);
+        ScriptEditor.Focus();
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

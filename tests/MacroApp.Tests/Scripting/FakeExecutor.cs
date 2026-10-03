@@ -41,11 +41,27 @@ internal sealed class FakeExecutor : IActionExecutor
     public void SetClipboard(string text) => Clipboard = text;
     public string GetClipboard() => Clipboard;
 
-    public bool WaitForImage(string imagePath, int timeoutMs, double threshold) => throw new NotSupportedException();
-    public void ClickImage(string imagePath, string? button) => throw new NotSupportedException();
-    public bool ImageExists(string imagePath) => throw new NotSupportedException();
-    public string? OCRGetText(string? region) => throw new NotSupportedException();
-    public bool TextOnScreen(string text) => throw new NotSupportedException();
+    /// <summary>Images that are "on screen".</summary>
+    public HashSet<string> VisibleImages { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public string ScreenText { get; set; } = string.Empty;
+
+    public bool WaitForImage(string imagePath, int timeoutMs, double threshold) => VisibleImages.Contains(imagePath);
+
+    public void ClickImage(string imagePath, string? button)
+    {
+        if (!VisibleImages.Contains(imagePath)) throw new InvalidOperationException($"'{imagePath}' isn't on screen");
+        Calls.Add($"ClickImage {imagePath} {button ?? "Left"}");
+    }
+
+    public bool ImageExists(string imagePath) => VisibleImages.Contains(imagePath);
+
+    public string? OCRGetText(string? region)
+    {
+        Calls.Add($"OCRGetText {region}".TrimEnd());
+        return ScreenText;
+    }
+
+    public bool TextOnScreen(string text) => ScreenText.Contains(text, StringComparison.OrdinalIgnoreCase);
 
     public void PlaySound(string filePath) => Calls.Add($"PlaySound {filePath}");
     public void ShowMessage(string message) => Calls.Add($"ShowMessage {message}");

@@ -153,7 +153,8 @@ public sealed class ScriptParser
             TokenType.IfImageExists => ParseIfImageExists(token, args),
 
             // OCR
-            TokenType.OCRGetText => new OCRGetTextNode(token.Line, GetArg(args, 0, token), args.Count > 1 ? args[1].Value : null),
+            TokenType.OCRGetText => new OCRGetTextNode(token.Line, GetArg(args, 0, token),
+                args.Count > 1 ? string.Join(" ", args.Skip(1).Select(a => a.Value)) : null),
             TokenType.IfTextOnScreen => ParseIfTextOnScreen(token, args),
 
             // Misc

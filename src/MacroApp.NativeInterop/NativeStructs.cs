@@ -108,3 +108,22 @@ public struct MSG
     public uint time;
     public POINT pt;
 }
+
+/// <summary>
+/// Header for GetDIBits. Only the fields used for a 32-bit top-down DIB matter here.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct BITMAPINFOHEADER
+{
+    public uint biSize;
+    public int biWidth;
+    public int biHeight;
+    public ushort biPlanes;
+    public ushort biBitCount;
+    public uint biCompression;
+    public uint biSizeImage;
+    public int biXPelsPerMeter;
+    public int biYPelsPerMeter;
+    public uint biClrUsed;
+    public uint biClrImportant;
+}

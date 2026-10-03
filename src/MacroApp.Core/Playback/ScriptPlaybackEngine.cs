@@ -1,4 +1,5 @@
 using MacroApp.Core.Models;
+using MacroApp.Core.Vision;
 using MacroApp.NativeInterop;
 using MacroApp.Scripting.Interpreter;
 using MacroApp.Scripting.Parser;
@@ -13,6 +14,7 @@ namespace MacroApp.Core.Playback;
 public sealed class ScriptPlaybackEngine : IPlaybackEngine, IDisposable
 {
     private readonly InputSimulator _inputSimulator;
+    private readonly IScreenVision? _vision;
     private readonly ManualResetEventSlim _stepSignal = new(false);
     private Thread? _thread;
     private CancellationTokenSource? _cts;
@@ -26,16 +28,20 @@ public sealed class ScriptPlaybackEngine : IPlaybackEngine, IDisposable
 
     public PlaybackState State => _state;
 
-    public ScriptPlaybackEngine(InputSimulator inputSimulator)
+    public ScriptPlaybackEngine(InputSimulator inputSimulator, IScreenVision? vision = null)
     {
         _inputSimulator = inputSimulator ?? throw new ArgumentNullException(nameof(inputSimulator));
+        _vision = vision;
     }
 
     /// <summary>
     /// Parses and starts running <paramref name="script"/>.
     /// Throws <see cref="InvalidOperationException"/> if the script has syntax errors.
     /// </summary>
-    public void Start(string script, MacroPlaybackSettings settings)
+    /// <param name="breakpoints">Script lines to stop at (switching to step mode) before they run.</param>
+    /// <param name="baseDirectory">Folder that relative file paths in the script (images, sounds) are resolved against.</param>
+    public void Start(string script, MacroPlaybackSettings settings,
+        IReadOnlyCollection<int>? breakpoints = null, string? baseDirectory = null)
     {
         if (_state != PlaybackState.Idle)
             throw new InvalidOperationException($"Cannot start playback in state {_state}");
@@ -54,7 +60,8 @@ public sealed class ScriptPlaybackEngine : IPlaybackEngine, IDisposable
             ? NativeMethods.GetForegroundWindow()
             : IntPtr.Zero;
 
-        _thread = new Thread(() => Run(nodes, settings, ct))
+        var breakpointLines = new HashSet<int>(breakpoints ?? Array.Empty<int>());
+        _thread = new Thread(() => Run(nodes, settings, breakpointLines, baseDirectory, ct))
         {
             Name = "MacroApp.ScriptThread",
             IsBackground = true,
@@ -62,7 +69,8 @@ public sealed class ScriptPlaybackEngine : IPlaybackEngine, IDisposable
         };
 
         // STA so clipboard commands and message boxes work from the script thread.
-        _thread.SetApartmentState(ApartmentState.STA);
+        if (OperatingSystem.IsWindows())
+            _thread.SetApartmentState(ApartmentState.STA);
 
         SetState(PlaybackState.Playing);
         _thread.Start();
@@ -105,9 +113,10 @@ public sealed class ScriptPlaybackEngine : IPlaybackEngine, IDisposable
         SetState(PlaybackState.Idle);
     }
 
-    private void Run(List<Scripting.AST.AstNode> nodes, MacroPlaybackSettings settings, CancellationToken ct)
+    private void Run(List<Scripting.AST.AstNode> nodes, MacroPlaybackSettings settings,
+        HashSet<int> breakpoints, string? baseDirectory, CancellationToken ct)
     {
-        var executor = new ScriptActionExecutor(_inputSimulator, settings, ct);
+        var executor = new ScriptActionExecutor(_inputSimulator, settings, ct, _vision, baseDirectory);
         var interpreter = new ScriptInterpreter(executor);
 
         bool infinite = settings.RepeatCount == AppConstants.InfiniteRepeat;
@@ -116,6 +125,9 @@ public sealed class ScriptPlaybackEngine : IPlaybackEngine, IDisposable
 
         interpreter.LineExecuting += line =>
         {
+            if (breakpoints.Contains(line) && (_state is PlaybackState.Playing or PlaybackState.Paused))
+                SetState(PlaybackState.StepThrough);
+
             Progress?.Invoke(new PlaybackProgressEventArgs(
                 line - 1, 0, repeat + 1, infinite ? -1 : totalRepeats, _state, line));
             WaitWhilePausedOrStepping(ct);

@@ -26,6 +26,7 @@ public class MacroSerializerTests : IDisposable
             Category = "Work",
             HotKey = new HotKeyBinding(NativeConstants.MOD_CONTROL, 0x4C),
             ScriptText = "TypeText \"hi\" // <not xml>",
+            Breakpoints = { 7, 2 },
             IsEnabled = false,
             Events =
             {
@@ -50,6 +51,7 @@ public class MacroSerializerTests : IDisposable
         loaded.Category.Should().Be("Work");
         loaded.HotKey.Should().Be(original.HotKey);
         loaded.ScriptText.Should().Be(original.ScriptText);
+        loaded.Breakpoints.Should().Equal(2, 7);
         loaded.IsEnabled.Should().BeFalse();
         loaded.Events.Should().Equal(original.Events);
         loaded.PlaybackSettings.RepeatCount.Should().Be(5);

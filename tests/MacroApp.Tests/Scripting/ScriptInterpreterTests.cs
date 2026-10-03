@@ -123,6 +123,43 @@ public class ScriptInterpreterTests
     }
 
     [Fact]
+    public void Image_commands_use_what_is_on_screen()
+    {
+        var executor = new FakeExecutor();
+        executor.VisibleImages.Add("ok.png");
+
+        const string script = """
+            WaitForImage "ok.png" 1000
+            ClickImage "ok.png" Right
+            IfImageExists "cancel.png"
+              TypeText cancel
+            Else
+              TypeText no-cancel
+            EndIf
+            """;
+
+        Run(script, executor).Calls.Should().Equal("ClickImage ok.png Right", "TypeText no-cancel");
+    }
+
+    [Fact]
+    public void WaitForImage_timeout_stops_the_script()
+    {
+        var act = () => Run("WaitForImage \"missing.png\" 10\nTypeText hi");
+
+        act.Should().Throw<ScriptRuntimeException>().WithMessage("*missing.png*");
+    }
+
+    [Fact]
+    public void OCR_text_goes_into_a_variable()
+    {
+        var executor = new FakeExecutor { ScreenText = "Total: 42" };
+
+        var calls = Run("OCRGetText total 10 20 300 40\nTypeText {total}\nIfTextOnScreen \"total:\"\nKeyPress Enter\nEndIf", executor).Calls;
+
+        calls.Should().Equal("OCRGetText 10 20 300 40", "TypeText Total: 42", "KeyPress Enter");
+    }
+
+    [Fact]
     public void WaitForWindow_timeout_stops_the_script()
     {
         var act = () => Run("WaitForWindow \"Notepad\" 10\nTypeText hi");
