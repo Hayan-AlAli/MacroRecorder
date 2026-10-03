@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Xml.Linq;
 using MacroApp.Core.Models;
@@ -145,16 +146,17 @@ public static class MacroSerializer
 
         var macro = new Macro
         {
+            // Older files (and hand-written ones) may lack an Id; keep the fresh one Macro generates.
+            Id = Guid.TryParse((string?)root.Element(ns + "Id"), out var id) ? id : Guid.NewGuid(),
+            CreatedAt = ParseDate(root.Element(ns + "CreatedAt")) ?? DateTime.UtcNow,
             Name = (string?)root.Element(ns + "Name") ?? "Untitled",
             Description = (string?)root.Element(ns + "Description") ?? string.Empty,
             Category = (string?)root.Element(ns + "Category") ?? "Default",
             IsEnabled = (bool?)root.Element(ns + "IsEnabled") ?? true,
         };
 
-        if (Guid.TryParse((string?)root.Element(ns + "Id"), out var id))
-        {
-            // Use reflection to set init-only property from deserialization
-        }
+        if (ParseDate(root.Element(ns + "ModifiedAt")) is { } modifiedAt)
+            macro.ModifiedAt = modifiedAt;
 
         // HotKey
         var hotKeyEl = root.Element(ns + "HotKey");
@@ -218,4 +220,9 @@ public static class MacroSerializer
 
         return macro;
     }
+
+    private static DateTime? ParseDate(XElement? element) =>
+        DateTime.TryParse((string?)element, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var value)
+            ? value
+            : null;
 }

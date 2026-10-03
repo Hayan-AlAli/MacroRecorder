@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Reactive.Linq;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,8 +21,15 @@ public partial class MainViewModel : ObservableObject
     private readonly InputSimulator _inputSimulator;
     private readonly RecordingEngine _recordingEngine;
     private readonly PlaybackEngine _playbackEngine;
+    private readonly ScriptPlaybackEngine _scriptPlaybackEngine;
     private readonly MacroManager _macroManager;
     private readonly HotKeyManager _hotKeyManager;
+
+    // Whichever engine is running right now (script or raw events)
+    private IPlaybackEngine? _activePlayback;
+    private CancellationTokenSource? _countdownCts;
+    private int _emergencyStopKey = AppConstants.DefaultEmergencyStopKey;
+    private readonly Dictionary<int, Action> _hotKeyActions = new();
 
     // ── Observable State ────────────────────────────────────────────
 
@@ -93,6 +101,7 @@ public partial class MainViewModel : ObservableObject
         InputSimulator inputSimulator,
         RecordingEngine recordingEngine,
         PlaybackEngine playbackEngine,
+        ScriptPlaybackEngine scriptPlaybackEngine,
         MacroManager macroManager,
         HotKeyManager hotKeyManager,
         MacroListViewModel macroList,
@@ -102,6 +111,7 @@ public partial class MainViewModel : ObservableObject
         _inputSimulator = inputSimulator;
         _recordingEngine = recordingEngine;
         _playbackEngine = playbackEngine;
+        _scriptPlaybackEngine = scriptPlaybackEngine;
         _macroManager = macroManager;
         _hotKeyManager = hotKeyManager;
         MacroList = macroList;
@@ -113,10 +123,30 @@ public partial class MainViewModel : ObservableObject
         _recordingEngine.EventRecorded += OnEventRecorded;
         _recordingEngine.CountdownTick += OnCountdownTick;
 
-        _playbackEngine.StateChanged += OnPlaybackStateChanged;
-        _playbackEngine.Progress += OnPlaybackProgress;
-        _playbackEngine.Completed += OnPlaybackCompleted;
-        _playbackEngine.Error += OnPlaybackError;
+        foreach (IPlaybackEngine engine in new IPlaybackEngine[] { _playbackEngine, _scriptPlaybackEngine })
+        {
+            engine.StateChanged += OnPlaybackStateChanged;
+            engine.Progress += OnPlaybackProgress;
+            engine.Completed += OnPlaybackCompleted;
+            engine.Error += OnPlaybackError;
+        }
+
+        // Emergency stop has to work while another app has focus, so it listens on the
+        // global keyboard hook. Injected keys are skipped so a macro can't stop itself.
+        _hookManager.InputEvents
+            .Where(e => !e.IsInjected
+                        && (e.EventType is RawInputEventType.KeyDown or RawInputEventType.SysKeyDown)
+                        && e.VirtualKeyCode == _emergencyStopKey)
+            .Subscribe(_ => _dispatcher.BeginInvoke(() =>
+            {
+                if (IsPlaying) EmergencyStop();
+            }));
+
+        _hotKeyManager.HotKeyTriggered.Subscribe(id =>
+        {
+            if (_hotKeyActions.TryGetValue(id, out var action))
+                _dispatcher.BeginInvoke(action);
+        });
 
         // Blink timer for recording indicator
         _blinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AppConstants.RecordingBlinkIntervalMs) };
@@ -127,11 +157,100 @@ public partial class MainViewModel : ObservableObject
         {
             if (e.PropertyName == nameof(MacroListViewModel.SelectedMacro))
             {
+                // Don't throw away unsaved edits when the user clicks another macro
+                FlushEditor(save: true);
+
                 SelectedMacro = MacroList.SelectedMacro;
                 if (SelectedMacro != null)
                     Editor.LoadMacro(SelectedMacro);
             }
         };
+    }
+
+    /// <summary>
+    /// Hooks the app up to its main window: registers the global hotkeys and keeps clicks
+    /// on the window itself out of recordings. Call once the window has a handle.
+    /// </summary>
+    public void AttachToWindow(IntPtr hwnd)
+    {
+        _recordingEngine.IgnoredWindow = hwnd;
+        _hotKeyManager.SetWindowHandle(hwnd);
+
+        var failed = new List<string>();
+        RegisterHotKey(AppConstants.DefaultRecordKey, ToggleRecording, failed);
+        RegisterHotKey(AppConstants.DefaultPlayKey, TogglePlayback, failed);
+        RegisterHotKey(AppConstants.DefaultStopKey, StopEverything, failed);
+
+        if (failed.Count > 0)
+            StatusText = $"Couldn't register {string.Join(", ", failed)} — another program is probably using them";
+    }
+
+    private void RegisterHotKey(int virtualKey, Action action, List<string> failed)
+    {
+        int id = _hotKeyManager.Register(new HotKeyBinding(0, (uint)virtualKey));
+        if (id < 0)
+        {
+            failed.Add(KeyNames.Format(virtualKey));
+            return;
+        }
+
+        _hotKeyActions[id] = action;
+
+        // The hotkeys still reach the low-level hook, so keep them out of recordings
+        if (!_recordingEngine.Settings.ExcludedKeys.Contains(virtualKey))
+            _recordingEngine.Settings.ExcludedKeys.Add(virtualKey);
+    }
+
+    private void ToggleRecording()
+    {
+        if (IsRecording || IsCountingDown)
+            StopRecordingCommand.Execute(null);
+        else if (RecordCommand.CanExecute(null))
+            RecordCommand.Execute(null);
+    }
+
+    private void TogglePlayback()
+    {
+        if (IsPlaying)
+            StopPlayback();
+        else if (PlayCommand.CanExecute(null))
+            Play();
+    }
+
+    private void StopEverything()
+    {
+        if (IsRecording || IsCountingDown)
+            StopRecordingCommand.Execute(null);
+        else if (IsPlaying)
+            StopPlayback();
+    }
+
+    /// <summary>
+    /// Copies pending editor changes into the selected macro, optionally saving it to disk.
+    /// </summary>
+    public void FlushEditor(bool save)
+    {
+        var macro = SelectedMacro;
+        if (macro == null || !Editor.IsDirty) return;
+
+        Editor.SyncToMacro(macro);
+        Editor.IsDirty = false;
+
+        if (save)
+            _ = SaveQuietlyAsync(macro);
+    }
+
+    private async Task SaveQuietlyAsync(Macro macro)
+    {
+        try
+        {
+            await _macroManager.SaveAsync(macro);
+        }
+        catch (Exception ex)
+        {
+            App.Logger.Error(ex, "Failed to save macro {Name}", macro.Name);
+            StatusText = $"Couldn't save '{macro.Name}': {ex.Message}";
+        }
     }
 
     /// <summary>
@@ -154,7 +273,13 @@ public partial class MainViewModel : ObservableObject
         try
         {
             StatusText = "Starting recording...";
-            await _recordingEngine.StartAsync();
+            _countdownCts?.Dispose();
+            _countdownCts = new CancellationTokenSource();
+            await _recordingEngine.StartAsync(_countdownCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Recording cancelled";
         }
         catch (Exception ex)
         {
@@ -168,7 +293,16 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStopRecording))]
     private async Task StopRecordingAsync()
     {
+        if (_recordingEngine.State == RecordingState.Countdown)
+        {
+            _countdownCts?.Cancel();
+            return;
+        }
+
         var events = _recordingEngine.Stop();
+
+        // Commit any pending edits first so the list refresh below can't write them over the new recording
+        FlushEditor(save: false);
 
         if (events.Count > 0)
         {
@@ -191,6 +325,7 @@ public partial class MainViewModel : ObservableObject
 
             await _macroManager.SaveAsync(macro);
             MacroList.RefreshFromManager(_macroManager);
+            MacroList.SelectedMacro = macro;
             SelectedMacro = macro;
             Editor.LoadMacro(macro);
 
@@ -226,17 +361,65 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanPlay))]
     private void Play()
     {
-        if (SelectedMacro == null || SelectedMacro.Events.Count == 0)
+        var macro = SelectedMacro;
+        if (macro == null)
         {
-            StatusText = "No macro selected or macro is empty";
+            StatusText = "Select a macro first";
             return;
         }
 
-        var settings = SelectedMacro.PlaybackSettings.Clone();
-        settings.SpeedMultiplier = SelectedSpeed;
+        if (_playbackEngine.State != PlaybackState.Idle || _scriptPlaybackEngine.State != PlaybackState.Idle)
+            return;
 
-        _playbackEngine.Start(SelectedMacro.Events, settings);
-        StatusText = $"Playing '{SelectedMacro.Name}'...";
+        var settings = macro.PlaybackSettings.Clone();
+        settings.SpeedMultiplier = SelectedSpeed;
+        settings.RepeatCount = Editor.RepeatCount;
+
+        EnsureEmergencyStopHook(settings.EmergencyStopKey);
+
+        try
+        {
+            // The script is the source of truth once there is one: it's generated from the
+            // recording and then edited, so it's what the user expects to run.
+            if (!string.IsNullOrWhiteSpace(Editor.ScriptText))
+            {
+                _activePlayback = _scriptPlaybackEngine;
+                _scriptPlaybackEngine.Start(Editor.ScriptText, settings);
+            }
+            else if (macro.Events.Count > 0)
+            {
+                _activePlayback = _playbackEngine;
+                _playbackEngine.Start(macro.Events, settings);
+            }
+            else
+            {
+                StatusText = "This macro is empty — record something or write a script first";
+                return;
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            _activePlayback = null;
+            StatusText = $"Can't play: {ex.Message}";
+            return;
+        }
+
+        StatusText = $"Playing '{macro.Name}'... (press {KeyNames.Format(_emergencyStopKey)} to stop)";
+    }
+
+    private void EnsureEmergencyStopHook(int stopKey)
+    {
+        _emergencyStopKey = stopKey;
+        if (_hookManager.IsRunning) return;
+
+        try
+        {
+            _hookManager.Start();
+        }
+        catch (Exception ex)
+        {
+            App.Logger.Warning(ex, "Couldn't start the input hook; emergency stop only works while the window is focused");
+        }
     }
 
     private bool CanPlay() => !IsRecording && !IsPlaying && SelectedMacro != null;
@@ -244,7 +427,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStopPlayback))]
     private void StopPlayback()
     {
-        _playbackEngine.Stop();
+        _activePlayback?.Stop();
         StatusText = "Playback stopped";
     }
 
@@ -253,14 +436,14 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanPausePlayback))]
     private void PausePlayback()
     {
-        if (_playbackEngine.State == PlaybackState.Playing)
+        if (_activePlayback?.State == PlaybackState.Playing)
         {
-            _playbackEngine.Pause();
+            _activePlayback.Pause();
             StatusText = "Playback paused";
         }
-        else if (_playbackEngine.State == PlaybackState.Paused)
+        else if (_activePlayback?.State is PlaybackState.Paused or PlaybackState.StepThrough)
         {
-            _playbackEngine.Resume();
+            _activePlayback.Resume();
             StatusText = "Playback resumed";
         }
     }
@@ -270,23 +453,30 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void StepThrough()
     {
-        if (_playbackEngine.State == PlaybackState.StepThrough)
+        if (_activePlayback?.State == PlaybackState.StepThrough)
         {
-            _playbackEngine.StepNext();
+            _activePlayback.StepNext();
         }
-        else if (_playbackEngine.State == PlaybackState.Playing)
+        else if (_activePlayback?.State is PlaybackState.Playing or PlaybackState.Paused)
         {
-            _playbackEngine.EnterStepMode();
-            StatusText = "Step-through mode";
+            _activePlayback.EnterStepMode();
+            StatusText = "Step-through mode — press Step to run the next line";
         }
     }
 
     [RelayCommand]
     private void EmergencyStop()
     {
-        if (IsRecording) _recordingEngine.Stop();
-        if (IsPlaying) _playbackEngine.Stop();
-        StatusText = "Emergency stop activated";
+        if (IsPlaying)
+        {
+            _activePlayback?.Stop();
+            StatusText = "Emergency stop — playback halted";
+        }
+        else if (IsRecording || IsCountingDown)
+        {
+            // Keep what was recorded; Esc in the app window is a stop, not a discard
+            StopRecordingCommand.Execute(null);
+        }
     }
 
     // ── Macro Commands ──────────────────────────────────────────────
@@ -303,9 +493,11 @@ public partial class MainViewModel : ObservableObject
     private async Task SaveMacroAsync()
     {
         if (SelectedMacro == null) return;
-        Editor.SyncToMacro(SelectedMacro);
-        await _macroManager.SaveAsync(SelectedMacro);
-        StatusText = $"Saved '{SelectedMacro.Name}'";
+        var macro = SelectedMacro;
+        Editor.SyncToMacro(macro);
+        await _macroManager.SaveAsync(macro);
+        Editor.IsDirty = false;
+        StatusText = $"Saved '{macro.Name}'";
     }
 
     // ── Engine Event Handlers ───────────────────────────────────────
@@ -370,7 +562,10 @@ public partial class MainViewModel : ObservableObject
         {
             CurrentPlaybackIndex = args.CurrentEventIndex;
             CurrentRepeat = args.CurrentRepeat;
-            StatusText = $"Playing event {args.CurrentEventIndex + 1}/{args.TotalEvents} (repeat {args.CurrentRepeat})";
+            string repeat = args.TotalRepeats < 0 ? $"{args.CurrentRepeat}/∞" : $"{args.CurrentRepeat}/{args.TotalRepeats}";
+            StatusText = args.Line > 0
+                ? $"Running line {args.Line} (repeat {repeat})"
+                : $"Playing event {args.CurrentEventIndex + 1}/{args.TotalEvents} (repeat {repeat})";
         });
     }
 
@@ -395,6 +590,7 @@ public partial class MainViewModel : ObservableObject
     private void RefreshCommands()
     {
         RecordCommand.NotifyCanExecuteChanged();
+        StepThroughCommand.NotifyCanExecuteChanged();
         StopRecordingCommand.NotifyCanExecuteChanged();
         PauseRecordingCommand.NotifyCanExecuteChanged();
         PlayCommand.NotifyCanExecuteChanged();

@@ -65,6 +65,7 @@ public partial class App : Application
         services.AddSingleton(sp => new MacroManager(storagePath));
         services.AddSingleton<RecordingEngine>();
         services.AddSingleton<PlaybackEngine>();
+        services.AddSingleton<ScriptPlaybackEngine>();
 
         // ViewModels
         services.AddSingleton<MainViewModel>();
@@ -86,15 +87,17 @@ public partial class App : Application
             var hotKeyManager = Services.GetService<HotKeyManager>();
             hotKeyManager?.Dispose();
 
-            var playbackEngine = Services.GetService<PlaybackEngine>();
-            playbackEngine?.Dispose();
+            Services.GetService<PlaybackEngine>()?.Dispose();
+            Services.GetService<ScriptPlaybackEngine>()?.Dispose();
 
             var recordingEngine = Services.GetService<RecordingEngine>();
             recordingEngine?.Dispose();
 
-            // Save all dirty macros
+            // Save all dirty macros. Run it off the UI thread: blocking the dispatcher on an
+            // async method that wants to resume on the dispatcher would deadlock.
             var macroManager = Services.GetService<MacroManager>();
-            macroManager?.SaveAllDirtyAsync().GetAwaiter().GetResult();
+            if (macroManager != null)
+                Task.Run(macroManager.SaveAllDirtyAsync).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {

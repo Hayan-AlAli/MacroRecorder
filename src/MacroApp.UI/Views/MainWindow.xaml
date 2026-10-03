@@ -75,7 +75,7 @@
 
                     <!-- Stop Recording -->
                     <Button Style="{StaticResource DangerButton}" Command="{Binding StopRecordingCommand}"
-                            Padding="12,6" Margin="3,0" ToolTip="Stop Recording">
+                            Padding="12,6" Margin="3,0" ToolTip="Stop recording (F9 or F11)">
                         <StackPanel Orientation="Horizontal">
                             <Rectangle Width="10" Height="10" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
                             <TextBlock Text="Stop Rec" VerticalAlignment="Center" />
@@ -95,13 +95,19 @@
 
                     <!-- Pause -->
                     <Button Style="{StaticResource GhostButton}" Command="{Binding PausePlaybackCommand}"
-                            Padding="10,6" Margin="3,0" ToolTip="Pause/Resume">
+                            Padding="10,6" Margin="3,0" ToolTip="Pause / resume playback">
                         <TextBlock Text="⏸" FontSize="14" />
+                    </Button>
+
+                    <!-- Step -->
+                    <Button Style="{StaticResource GhostButton}" Command="{Binding StepThroughCommand}"
+                            Padding="10,6" Margin="3,0" ToolTip="Step mode: run one line/event at a time. Press again to advance.">
+                        <TextBlock Text="Step" />
                     </Button>
 
                     <!-- Stop Playback -->
                     <Button Style="{StaticResource DangerButton}" Command="{Binding StopPlaybackCommand}"
-                            Padding="12,6" Margin="3,0" ToolTip="Stop Playback">
+                            Padding="12,6" Margin="3,0" ToolTip="Stop playback (F10, F11 or Esc)">
                         <StackPanel Orientation="Horizontal">
                             <Rectangle Width="10" Height="10" Fill="White" Margin="0,0,6,0" VerticalAlignment="Center" />
                             <TextBlock Text="Stop" VerticalAlignment="Center" />
@@ -262,7 +268,7 @@
                         <TextBlock Text="Category" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,4" />
                         <TextBox Text="{Binding Editor.MacroCategory, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Text="Repeat Count" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,4" />
+                        <TextBlock Text="Repeat count (-1 = until stopped)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,4" />
                         <TextBox Text="{Binding Editor.RepeatCount, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
 
@@ -297,7 +303,7 @@
                         <TextBlock Text="{Binding AppState}" FontSize="11"
                                    Foreground="{StaticResource AccentCyanBrush}" FontWeight="SemiBold" />
                     </Border>
-                    <TextBlock Text="ESC = Emergency Stop" FontSize="11"
+                    <TextBlock Text="F9 record · F10 play · F11 stop · Esc emergency stop" FontSize="11"
                                Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
                 </StackPanel>
             </DockPanel>

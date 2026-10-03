@@ -1,3 +1,4 @@
+using System.Globalization;
 using MacroApp.Scripting.AST;
 
 namespace MacroApp.Scripting.Interpreter;
@@ -49,6 +50,20 @@ public interface IActionExecutor
 }
 
 /// <summary>
+/// Thrown when a script fails while running. <see cref="Line"/> is the 1-based script line.
+/// </summary>
+public sealed class ScriptRuntimeException : Exception
+{
+    public int Line { get; }
+
+    public ScriptRuntimeException(int line, string message, Exception? inner = null)
+        : base($"Line {line}: {message}", inner)
+    {
+        Line = line;
+    }
+}
+
+/// <summary>
 /// Tree-walking interpreter that executes the macro script AST.
 /// Delegates all Win32/UI actions to the injected IActionExecutor.
 /// </summary>
@@ -56,9 +71,6 @@ public sealed class ScriptInterpreter
 {
     private readonly IActionExecutor _executor;
     private readonly VariableStore _variables = new();
-    private readonly Dictionary<string, int> _labels = new();
-    private List<AstNode> _flatNodes = new();
-    private int _pc; // program counter for flat execution
     private volatile bool _stopRequested;
     private CancellationToken _ct;
 
@@ -72,13 +84,19 @@ public sealed class ScriptInterpreter
     /// </summary>
     public VariableStore Variables => _variables;
 
+    /// <summary>
+    /// True if the last run ended because of a <c>Stop</c> command or <see cref="RequestStop"/>.
+    /// </summary>
+    public bool WasStopped => _stopRequested;
+
     public ScriptInterpreter(IActionExecutor executor)
     {
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
     }
 
     /// <summary>
-    /// Executes a list of AST nodes.
+    /// Executes a list of AST nodes. Throws <see cref="OperationCanceledException"/> when
+    /// <paramref name="ct"/> is cancelled and <see cref="ScriptRuntimeException"/> when a command fails.
     /// </summary>
     public void Execute(List<AstNode> nodes, CancellationToken ct = default)
     {
@@ -86,7 +104,15 @@ public sealed class ScriptInterpreter
         _stopRequested = false;
         _variables.Clear();
 
-        ExecuteBlock(nodes);
+        try
+        {
+            ExecuteBlock(nodes);
+        }
+        catch (GotoSignal jump)
+        {
+            throw new ScriptRuntimeException(jump.Line,
+                $"Goto '{jump.Label}' can only jump to a label in the same block or an enclosing one.");
+        }
     }
 
     /// <summary>
@@ -96,13 +122,41 @@ public sealed class ScriptInterpreter
 
     private void ExecuteBlock(List<AstNode> nodes)
     {
-        foreach (var node in nodes)
+        int i = 0;
+        while (i < nodes.Count)
         {
-            if (_stopRequested || _ct.IsCancellationRequested) return;
+            _ct.ThrowIfCancellationRequested();
+            if (_stopRequested) return;
 
-            LineExecuting?.Invoke(node.Line);
-            ExecuteNode(node);
+            var node = nodes[i];
+            try
+            {
+                if (node is not CommentNode and not LabelNode)
+                    LineExecuting?.Invoke(node.Line);
+
+                ExecuteNode(node);
+                i++;
+            }
+            catch (GotoSignal jump)
+            {
+                // Goto unwinds out of nested blocks until it reaches the block holding the label.
+                int target = nodes.FindIndex(n => n is LabelNode label &&
+                    label.Name.Equals(jump.Label, StringComparison.OrdinalIgnoreCase));
+                if (target < 0) throw;
+                i = target + 1;
+            }
+            catch (Exception ex) when (ex is not (OperationCanceledException or ScriptRuntimeException))
+            {
+                throw new ScriptRuntimeException(node.Line, ex.Message, ex);
+            }
         }
+    }
+
+    /// <summary>Control-flow signal for Goto; never escapes <see cref="Execute"/>.</summary>
+    private sealed class GotoSignal(int line, string label) : Exception
+    {
+        public int Line { get; } = line;
+        public string Label { get; } = label;
     }
 
     private void ExecuteNode(AstNode node)
@@ -192,8 +246,10 @@ public sealed class ScriptInterpreter
                 break;
 
             case LabelNode:
-                // Labels are resolved at parse time
                 break;
+
+            case GotoNode n:
+                throw new GotoSignal(n.Line, _variables.Resolve(n.LabelName));
 
             // ── Variables ───────────────────────────────────────
             case SetVarNode n:
@@ -208,9 +264,13 @@ public sealed class ScriptInterpreter
                 _executor.ActivateWindow(_variables.Interpolate(n.WindowTitle));
                 break;
             case WaitForWindowNode n:
-                _executor.WaitForWindow(_variables.Interpolate(n.WindowTitle),
-                    n.TimeoutMs != null ? _variables.ResolveInt(n.TimeoutMs) : 30000);
+            {
+                string title = _variables.Interpolate(n.WindowTitle);
+                int timeout = n.TimeoutMs != null ? _variables.ResolveInt(n.TimeoutMs) : 30000;
+                if (!_executor.WaitForWindow(title, timeout))
+                    throw new ScriptRuntimeException(n.Line, $"Timed out after {timeout} ms waiting for window '{title}'.");
                 break;
+            }
             case RunProgramNode n:
                 _executor.RunProgram(_variables.Interpolate(n.Path),
                     n.Arguments != null ? _variables.Interpolate(n.Arguments) : null);
@@ -298,7 +358,8 @@ public sealed class ScriptInterpreter
             string left = resolved[..idx].Trim();
             string right = resolved[(idx + op.Length)..].Trim();
 
-            if (double.TryParse(left, out double lNum) && double.TryParse(right, out double rNum))
+            if (double.TryParse(left, NumberStyles.Float, CultureInfo.InvariantCulture, out double lNum) &&
+                double.TryParse(right, NumberStyles.Float, CultureInfo.InvariantCulture, out double rNum))
             {
                 return op switch
                 {

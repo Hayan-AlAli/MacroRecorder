@@ -17,7 +17,8 @@ public record RawInputEvent(
     int? X,
     int? Y,
     int? MouseData,
-    uint? MouseFlags);
+    uint? MouseFlags,
+    bool IsInjected = false);
 
 /// <summary>
 /// Types of raw input events from hooks.
@@ -54,6 +55,7 @@ public sealed class HookManager : IDisposable
     private Thread? _hookThread;
     private uint _hookThreadId;
     private volatile bool _isRunning;
+    private Exception? _startError;
     private bool _disposed;
 
     // CRITICAL: prevent GC collection of delegates while hooks are active
@@ -88,6 +90,7 @@ public sealed class HookManager : IDisposable
         if (_isRunning) return;
 
         var readySignal = new ManualResetEventSlim(false);
+        _startError = null;
 
         _hookThread = new Thread(() => HookThreadProc(readySignal))
         {
@@ -102,6 +105,9 @@ public sealed class HookManager : IDisposable
         {
             throw new TimeoutException("Hook thread failed to start within 5 seconds.");
         }
+
+        if (_startError != null)
+            throw new InvalidOperationException("Could not install the input hooks.", _startError);
     }
 
     /// <summary>
@@ -175,7 +181,8 @@ public sealed class HookManager : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"HookManager thread error: {ex}");
-            readySignal.Set(); // Unblock caller even on failure
+            _startError = ex;
+            if (!_isRunning) readySignal.Set(); // Unblock caller even on failure
         }
         finally
         {
@@ -228,7 +235,8 @@ public sealed class HookManager : IDisposable
                         X: null,
                         Y: null,
                         MouseData: null,
-                        MouseFlags: null);
+                        MouseFlags: null,
+                        IsInjected: (hookStruct.flags & NativeConstants.LLKHF_INJECTED) != 0);
 
                     _inputSubject.OnNext(evt);
                 }
@@ -278,7 +286,8 @@ public sealed class HookManager : IDisposable
                         X: hookStruct.pt.X,
                         Y: hookStruct.pt.Y,
                         MouseData: hookStruct.mouseData,
-                        MouseFlags: hookStruct.flags);
+                        MouseFlags: hookStruct.flags,
+                        IsInjected: (hookStruct.flags & NativeConstants.LLMHF_INJECTED) != 0);
 
                     _inputSubject.OnNext(evt);
                 }

@@ -33,7 +33,17 @@ public enum MouseButton
 /// </summary>
 public sealed class InputSimulator
 {
+    // VIRTUALDESK makes the 0-65535 range span every monitor instead of just the primary one.
+    private const uint AbsoluteMove =
+        NativeConstants.MOUSEEVENTF_MOVE | NativeConstants.MOUSEEVENTF_ABSOLUTE | NativeConstants.MOUSEEVENTF_VIRTUALDESK;
+
     private readonly int _inputSize = Marshal.SizeOf<INPUT>();
+
+    // Keys and buttons we've pressed but not yet released, so a stopped macro
+    // doesn't leave Shift or the left mouse button stuck down.
+    private readonly HashSet<ushort> _heldKeys = new();
+    private readonly HashSet<MouseButton> _heldButtons = new();
+    private readonly object _heldLock = new();
 
     /// <summary>
     /// Gets or sets the target window handle for WindowRelative coordinate mode.
@@ -49,6 +59,7 @@ public sealed class InputSimulator
     {
         var input = CreateKeyInput(virtualKeyCode, 0);
         SendSingleInput(input);
+        lock (_heldLock) _heldKeys.Add(virtualKeyCode);
     }
 
     /// <summary>
@@ -58,6 +69,41 @@ public sealed class InputSimulator
     {
         var input = CreateKeyInput(virtualKeyCode, NativeConstants.KEYEVENTF_KEYUP);
         SendSingleInput(input);
+        lock (_heldLock) _heldKeys.Remove(virtualKeyCode);
+    }
+
+    /// <summary>
+    /// Releases every key and mouse button this simulator pressed and hasn't released yet.
+    /// Call this whenever playback ends, especially when it's cancelled halfway through.
+    /// </summary>
+    public void ReleaseAll()
+    {
+        ushort[] keys;
+        MouseButton[] buttons;
+        lock (_heldLock)
+        {
+            keys = _heldKeys.ToArray();
+            buttons = _heldButtons.ToArray();
+            _heldKeys.Clear();
+            _heldButtons.Clear();
+        }
+
+        var inputs = new List<INPUT>();
+        foreach (var key in keys)
+            inputs.Add(CreateKeyInput(key, NativeConstants.KEYEVENTF_KEYUP));
+
+        foreach (var button in buttons)
+        {
+            var (_, upFlag, data) = GetMouseButtonFlags(button);
+            inputs.Add(new INPUT
+            {
+                type = NativeConstants.INPUT_MOUSE,
+                union = new INPUTUNION { mi = new MOUSEINPUT { mouseData = data, dwFlags = upFlag } }
+            });
+        }
+
+        if (inputs.Count > 0)
+            NativeMethods.SendInput((uint)inputs.Count, inputs.ToArray(), _inputSize);
     }
 
     /// <summary>
@@ -161,7 +207,7 @@ public sealed class InputSimulator
                     dx = normX,
                     dy = normY,
                     mouseData = 0,
-                    dwFlags = NativeConstants.MOUSEEVENTF_MOVE | NativeConstants.MOUSEEVENTF_ABSOLUTE,
+                    dwFlags = AbsoluteMove,
                     time = 0,
                     dwExtraInfo = IntPtr.Zero
                 }
@@ -207,7 +253,7 @@ public sealed class InputSimulator
                     {
                         dx = normX, dy = normY,
                         mouseData = data,
-                        dwFlags = NativeConstants.MOUSEEVENTF_MOVE | NativeConstants.MOUSEEVENTF_ABSOLUTE | downFlag,
+                        dwFlags = AbsoluteMove | downFlag,
                         time = 0, dwExtraInfo = IntPtr.Zero
                     }
                 }
@@ -221,7 +267,7 @@ public sealed class InputSimulator
                     {
                         dx = normX, dy = normY,
                         mouseData = data,
-                        dwFlags = NativeConstants.MOUSEEVENTF_MOVE | NativeConstants.MOUSEEVENTF_ABSOLUTE | upFlag,
+                        dwFlags = AbsoluteMove | upFlag,
                         time = 0, dwExtraInfo = IntPtr.Zero
                     }
                 }
@@ -259,7 +305,7 @@ public sealed class InputSimulator
                     dx = normX,
                     dy = normY,
                     mouseData = delta,
-                    dwFlags = NativeConstants.MOUSEEVENTF_WHEEL | NativeConstants.MOUSEEVENTF_ABSOLUTE | NativeConstants.MOUSEEVENTF_MOVE,
+                    dwFlags = NativeConstants.MOUSEEVENTF_WHEEL | AbsoluteMove,
                     time = 0,
                     dwExtraInfo = IntPtr.Zero
                 }
@@ -299,6 +345,8 @@ public sealed class InputSimulator
     private static INPUT CreateKeyInput(ushort virtualKeyCode, uint flags)
     {
         uint scanCode = NativeMethods.MapVirtualKey(virtualKeyCode, 0);
+        if (KeyNames.IsExtendedKey(virtualKeyCode))
+            flags |= NativeConstants.KEYEVENTF_EXTENDEDKEY;
         return new INPUT
         {
             type = NativeConstants.INPUT_KEYBOARD,
@@ -333,7 +381,7 @@ public sealed class InputSimulator
                     dx = normX,
                     dy = normY,
                     mouseData = data,
-                    dwFlags = NativeConstants.MOUSEEVENTF_MOVE | NativeConstants.MOUSEEVENTF_ABSOLUTE | flag,
+                    dwFlags = AbsoluteMove | flag,
                     time = 0,
                     dwExtraInfo = IntPtr.Zero
                 }
@@ -341,6 +389,12 @@ public sealed class InputSimulator
         };
 
         SendSingleInput(input);
+
+        lock (_heldLock)
+        {
+            if (isDown) _heldButtons.Add(button);
+            else _heldButtons.Remove(button);
+        }
     }
 
     private (int absX, int absY) ConvertCoordinates(int x, int y, CoordinateMode mode)
@@ -375,8 +429,12 @@ public sealed class InputSimulator
         int screenLeft = NativeMethods.GetSystemMetrics(NativeConstants.SM_XVIRTUALSCREEN);
         int screenTop = NativeMethods.GetSystemMetrics(NativeConstants.SM_YVIRTUALSCREEN);
 
-        int normX = (int)(((double)(absX - screenLeft) / screenWidth) * 65535);
-        int normY = (int)(((double)(absY - screenTop) / screenHeight) * 65535);
+        if (screenWidth <= 1 || screenHeight <= 1)
+            return (0, 0);
+
+        // Map the last pixel to exactly 65535; dividing by the full width lands one pixel short.
+        int normX = (int)Math.Round((absX - screenLeft) * 65535.0 / (screenWidth - 1));
+        int normY = (int)Math.Round((absY - screenTop) * 65535.0 / (screenHeight - 1));
 
         return (normX, normY);
     }

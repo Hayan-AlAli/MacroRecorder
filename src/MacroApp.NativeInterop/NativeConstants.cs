@@ -31,6 +31,14 @@ public static class NativeConstants
     // ── Window messages ─────────────────────────────────────────────
     public const int WM_HOTKEY = 0x0312;
     public const int WM_QUIT = 0x0012;
+    public const int WM_CLOSE = 0x0010;
+
+    // ── Hook struct flags ───────────────────────────────────────────
+    public const uint LLKHF_INJECTED = 0x10;
+    public const uint LLMHF_INJECTED = 0x01;
+
+    // ── GetAncestor ─────────────────────────────────────────────────
+    public const uint GA_ROOT = 2;
 
     // ── SendInput types ─────────────────────────────────────────────
     public const uint INPUT_MOUSE = 0;

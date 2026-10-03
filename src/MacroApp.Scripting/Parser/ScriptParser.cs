@@ -42,10 +42,12 @@ public sealed class ScriptParser
         _pos = 0;
         _errors.Clear();
 
-        return ParseBlock(null);
+        var nodes = ParseBlock(null, null);
+        ValidateLabels(nodes);
+        return nodes;
     }
 
-    private List<AstNode> ParseBlock(TokenType? endToken)
+    private List<AstNode> ParseBlock(TokenType? endToken, Token? opener)
     {
         var nodes = new List<AstNode>();
 
@@ -84,8 +86,8 @@ public sealed class ScriptParser
         if (endToken.HasValue)
         {
             _errors.Add(new ScriptError(
-                _tokens.Count > 0 ? _tokens[^1].Line : 0, 0,
-                $"Missing {endToken.Value}",
+                opener?.Line ?? 0, opener?.Column ?? 0,
+                $"'{opener?.Value}' is missing a matching {endToken.Value}",
                 ScriptErrorSeverity.Error));
         }
 
@@ -103,7 +105,7 @@ public sealed class ScriptParser
             TokenType.KeyDown => new KeyDownNode(token.Line, GetArg(args, 0, token)),
             TokenType.KeyUp => new KeyUpNode(token.Line, GetArg(args, 0, token)),
             TokenType.KeyPress => new KeyPressNode(token.Line, GetArg(args, 0, token)),
-            TokenType.TypeText => new TypeTextNode(token.Line, GetStringArg(args, 0, token)),
+            TokenType.TypeText => new TypeTextNode(token.Line, GetTextArg(args, token)),
             TokenType.KeyCombo => new KeyComboNode(token.Line, args.Select(a => a.Value).ToArray()),
 
             // Mouse
@@ -124,7 +126,8 @@ public sealed class ScriptParser
             TokenType.While => ParseWhile(token, args),
             TokenType.If => ParseIf(token, args),
             TokenType.Goto => new GotoNode(token.Line, GetArg(args, 0, token)),
-            TokenType.Label => new LabelNode(token.Line, token.Value.TrimEnd(':')),
+            // Both "Label Name" and "Name:" are accepted
+            TokenType.Label => new LabelNode(token.Line, args.Count > 0 ? args[0].Value : token.Value.TrimEnd(':')),
             TokenType.Stop => new StopNode(token.Line),
 
             // Variables
@@ -141,7 +144,7 @@ public sealed class ScriptParser
             TokenType.RestoreWindow => new RestoreWindowNode(token.Line, GetStringArg(args, 0, token)),
 
             // Clipboard
-            TokenType.SetClipboard => new SetClipboardNode(token.Line, GetStringArg(args, 0, token)),
+            TokenType.SetClipboard => new SetClipboardNode(token.Line, GetTextArg(args, token)),
             TokenType.GetClipboard => new GetClipboardNode(token.Line, GetArg(args, 0, token)),
 
             // Image
@@ -161,6 +164,9 @@ public sealed class ScriptParser
             // Unknown
             TokenType.Unknown => HandleUnknown(token),
 
+            // Block terminators that didn't match an opener
+            TokenType.EndRepeat or TokenType.EndWhile or TokenType.EndIf or TokenType.Else => HandleStrayTerminator(token),
+
             _ => null
         };
     }
@@ -168,21 +174,21 @@ public sealed class ScriptParser
     private AstNode ParseRepeat(Token token, List<Token> args)
     {
         string count = GetArg(args, 0, token);
-        var body = ParseBlock(TokenType.EndRepeat);
+        var body = ParseBlock(TokenType.EndRepeat, token);
         return new RepeatNode(token.Line, count, body);
     }
 
     private AstNode ParseWhile(Token token, List<Token> args)
     {
         string condition = string.Join(" ", args.Select(a => a.Value));
-        var body = ParseBlock(TokenType.EndWhile);
+        var body = ParseBlock(TokenType.EndWhile, token);
         return new WhileNode(token.Line, condition, body);
     }
 
     private AstNode ParseIf(Token token, List<Token> args)
     {
         string condition = string.Join(" ", args.Select(a => a.Value));
-        var thenBody = ParseBlock(TokenType.EndIf);
+        var thenBody = ParseBlock(TokenType.EndIf, token);
 
         List<AstNode>? elseBody = null;
         // Check if we stopped at Else
@@ -190,7 +196,7 @@ public sealed class ScriptParser
         {
             _pos++; // consume Else
             SkipToEndOfLine();
-            elseBody = ParseBlock(TokenType.EndIf);
+            elseBody = ParseBlock(TokenType.EndIf, token);
         }
 
         return new IfNode(token.Line, condition, thenBody, elseBody);
@@ -199,14 +205,14 @@ public sealed class ScriptParser
     private AstNode ParseIfImageExists(Token token, List<Token> args)
     {
         string imagePath = GetStringArg(args, 0, token);
-        var thenBody = ParseBlock(TokenType.EndIf);
+        var thenBody = ParseBlock(TokenType.EndIf, token);
 
         List<AstNode>? elseBody = null;
         if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Else)
         {
             _pos++;
             SkipToEndOfLine();
-            elseBody = ParseBlock(TokenType.EndIf);
+            elseBody = ParseBlock(TokenType.EndIf, token);
         }
 
         return new IfImageExistsNode(token.Line, imagePath, thenBody, elseBody);
@@ -215,14 +221,14 @@ public sealed class ScriptParser
     private AstNode ParseIfTextOnScreen(Token token, List<Token> args)
     {
         string text = GetStringArg(args, 0, token);
-        var thenBody = ParseBlock(TokenType.EndIf);
+        var thenBody = ParseBlock(TokenType.EndIf, token);
 
         List<AstNode>? elseBody = null;
         if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Else)
         {
             _pos++;
             SkipToEndOfLine();
-            elseBody = ParseBlock(TokenType.EndIf);
+            elseBody = ParseBlock(TokenType.EndIf, token);
         }
 
         return new IfTextOnScreenNode(token.Line, text, thenBody, elseBody);
@@ -235,6 +241,13 @@ public sealed class ScriptParser
         return null;
     }
 
+    private AstNode? HandleStrayTerminator(Token token)
+    {
+        _errors.Add(new ScriptError(token.Line, token.Column,
+            $"'{token.Value}' has no matching block to close", ScriptErrorSeverity.Error));
+        return null;
+    }
+
     private List<Token> ConsumeArgs()
     {
         var args = new List<Token>();
@@ -242,10 +255,78 @@ public sealed class ScriptParser
                _tokens[_pos].Type != TokenType.EndOfLine &&
                _tokens[_pos].Type != TokenType.EndOfFile)
         {
-            args.Add(_tokens[_pos]);
+            var token = _tokens[_pos];
+
+            // The lexer strips the braces from {var}; put them back so the interpreter's
+            // interpolation picks the reference up instead of treating it as a literal name.
+            if (token.Type == TokenType.Variable)
+                token = token with { Value = "{" + token.Value + "}" };
+
+            args.Add(token);
             _pos++;
         }
         return args;
+    }
+
+    /// <summary>
+    /// Free text argument: a quoted string, or everything after the command if it isn't quoted.
+    /// </summary>
+    private string GetTextArg(List<Token> args, Token command)
+    {
+        if (args.Count == 0 || args[0].Type == TokenType.StringLiteral)
+            return GetStringArg(args, 0, command);
+
+        return string.Join(" ", args.Select(a => a.Value));
+    }
+
+    private void ValidateLabels(List<AstNode> nodes)
+    {
+        var labels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var gotos = new List<GotoNode>();
+
+        foreach (var node in Flatten(nodes))
+        {
+            if (node is LabelNode label && !labels.TryAdd(label.Name, label.Line))
+            {
+                _errors.Add(new ScriptError(label.Line, 0,
+                    $"Label '{label.Name}' is already defined on line {labels[label.Name]}", ScriptErrorSeverity.Error));
+            }
+            else if (node is GotoNode jump)
+            {
+                gotos.Add(jump);
+            }
+        }
+
+        foreach (var jump in gotos)
+        {
+            // Labels built from variables can only be checked at run time
+            if (!jump.LabelName.Contains('{') && !labels.ContainsKey(jump.LabelName))
+            {
+                _errors.Add(new ScriptError(jump.Line, 0,
+                    $"Goto target '{jump.LabelName}' is not defined", ScriptErrorSeverity.Error));
+            }
+        }
+    }
+
+    private static IEnumerable<AstNode> Flatten(IEnumerable<AstNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            yield return node;
+
+            IEnumerable<AstNode> children = node switch
+            {
+                RepeatNode n => n.Body,
+                WhileNode n => n.Body,
+                IfNode n => n.ThenBody.Concat(n.ElseBody ?? new()),
+                IfImageExistsNode n => n.ThenBody.Concat(n.ElseBody ?? new()),
+                IfTextOnScreenNode n => n.ThenBody.Concat(n.ElseBody ?? new()),
+                _ => Enumerable.Empty<AstNode>()
+            };
+
+            foreach (var child in Flatten(children))
+                yield return child;
+        }
     }
 
     private void SkipToEndOfLine()

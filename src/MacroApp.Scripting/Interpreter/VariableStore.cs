@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace MacroApp.Scripting.Interpreter;
 
 /// <summary>
@@ -21,14 +23,12 @@ public sealed class VariableStore
     /// <summary>
     /// Gets a variable as an integer.
     /// </summary>
-    public int GetInt(string name) =>
-        _variables.TryGetValue(name, out var value) && int.TryParse(value, out var result) ? result : 0;
+    public int GetInt(string name) => _variables.TryGetValue(name, out var value) ? ParseInt(value) : 0;
 
     /// <summary>
     /// Gets a variable as a double.
     /// </summary>
-    public double GetDouble(string name) =>
-        _variables.TryGetValue(name, out var value) && double.TryParse(value, out var result) ? result : 0.0;
+    public double GetDouble(string name) => _variables.TryGetValue(name, out var value) ? ParseDouble(value) : 0.0;
 
     /// <summary>
     /// Increments a numeric variable by the given amount.
@@ -36,8 +36,8 @@ public sealed class VariableStore
     public void Increment(string name, string amountStr)
     {
         double current = GetDouble(name);
-        double amount = double.TryParse(amountStr, out var a) ? a : 1.0;
-        Set(name, (current + amount).ToString());
+        double amount = double.TryParse(amountStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var a) ? a : 1.0;
+        Set(name, (current + amount).ToString(CultureInfo.InvariantCulture));
     }
 
     /// <summary>
@@ -71,20 +71,12 @@ public sealed class VariableStore
     /// <summary>
     /// Resolves a value to an integer.
     /// </summary>
-    public int ResolveInt(string value)
-    {
-        string resolved = Resolve(value);
-        return int.TryParse(resolved, out var result) ? result : 0;
-    }
+    public int ResolveInt(string value) => ParseInt(Resolve(value));
 
     /// <summary>
     /// Resolves a value to a double.
     /// </summary>
-    public double ResolveDouble(string value)
-    {
-        string resolved = Resolve(value);
-        return double.TryParse(resolved, out var result) ? result : 0.0;
-    }
+    public double ResolveDouble(string value) => ParseDouble(Resolve(value));
 
     /// <summary>
     /// Clears all variables.
@@ -95,4 +87,17 @@ public sealed class VariableStore
     /// Gets all variable names and values.
     /// </summary>
     public IReadOnlyDictionary<string, string> GetAll() => _variables;
+
+    // Scripts always use '.' as the decimal separator, whatever the Windows locale says.
+    private static double ParseDouble(string value) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) ? result : 0.0;
+
+    private static int ParseInt(string value)
+    {
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result))
+            return result;
+
+        double d = ParseDouble(value);
+        return d is >= int.MinValue and <= int.MaxValue ? (int)Math.Round(d) : 0;
+    }
 }

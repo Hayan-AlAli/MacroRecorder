@@ -61,6 +61,7 @@ public partial class MacroListViewModel : ObservableObject
     {
         if (_macroManager == null) return;
 
+        var previousSelection = SelectedMacro;
         FilteredMacros.Clear();
 
         var macros = string.IsNullOrWhiteSpace(SearchText)
@@ -72,6 +73,10 @@ public partial class MacroListViewModel : ObservableObject
 
         foreach (var macro in macros)
             FilteredMacros.Add(macro);
+
+        // Clearing the list drops the grid's selection; put it back if the macro is still visible
+        if (previousSelection != null && FilteredMacros.Contains(previousSelection))
+            SelectedMacro = previousSelection;
     }
 
     [RelayCommand]

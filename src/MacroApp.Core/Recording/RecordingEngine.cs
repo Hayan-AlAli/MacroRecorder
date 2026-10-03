@@ -62,6 +62,12 @@ public sealed class RecordingEngine : IDisposable
     public RecordingSettings Settings { get; set; } = new();
 
     /// <summary>
+    /// A top-level window whose input should never be recorded — normally the app's own
+    /// main window, so clicking "Stop" doesn't end up as the last step of every macro.
+    /// </summary>
+    public IntPtr IgnoredWindow { get; set; }
+
+    /// <summary>
     /// Gets the count of recorded events.
     /// </summary>
     public int EventCount
@@ -85,23 +91,28 @@ public sealed class RecordingEngine : IDisposable
         if (Settings.CountdownSeconds > 0)
         {
             SetState(RecordingState.Countdown);
-            for (int i = Settings.CountdownSeconds; i > 0; i--)
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                CountdownTick?.Invoke(i);
-                await Task.Delay(1000, ct);
+                for (int i = Settings.CountdownSeconds; i > 0; i--)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    CountdownTick?.Invoke(i);
+                    await Task.Delay(1000, ct);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                SetState(RecordingState.Idle);
+                throw;
             }
         }
 
         lock (_lock) _recordedEvents.Clear();
 
-        // Start hooks if not already running
+        // The hooks may already be running for the emergency-stop key, so they always
+        // capture both devices; KeyboardOnly/MouseOnly are applied in FilterEvent instead.
         if (!_hookManager.IsRunning)
-        {
-            _hookManager.CaptureKeyboard = !Settings.MouseOnly;
-            _hookManager.CaptureMouse = !Settings.KeyboardOnly;
             _hookManager.Start();
-        }
 
         _lastTimestamp = HighResolutionTimer.GetTimestamp();
         NativeMethods.GetCursorPos(out POINT pos);
@@ -171,6 +182,11 @@ public sealed class RecordingEngine : IDisposable
     {
         if (_state != RecordingState.Recording) return false;
 
+        // Input synthesized by SendInput (our own playback, or other automation tools)
+        if (raw.IsInjected) return false;
+
+        if (IsTargetingIgnoredWindow(raw)) return false;
+
         // Keyboard-only mode
         if (Settings.KeyboardOnly && IsMouseEvent(raw.EventType)) return false;
 
@@ -191,6 +207,22 @@ public sealed class RecordingEngine : IDisposable
         }
 
         return true;
+    }
+
+    private bool IsTargetingIgnoredWindow(RawInputEvent raw)
+    {
+        if (IgnoredWindow == IntPtr.Zero) return false;
+
+        if (IsKeyboardEvent(raw.EventType))
+            return NativeMethods.GetForegroundWindow() == IgnoredWindow;
+
+        if (raw.X.HasValue && raw.Y.HasValue && raw.EventType != RawInputEventType.MouseMove)
+        {
+            var hwnd = NativeMethods.WindowFromPoint(new POINT { X = raw.X.Value, Y = raw.Y.Value });
+            return hwnd != IntPtr.Zero && NativeMethods.GetAncestor(hwnd, NativeConstants.GA_ROOT) == IgnoredWindow;
+        }
+
+        return false;
     }
 
     private void OnRawInputEvent(RawInputEvent raw)

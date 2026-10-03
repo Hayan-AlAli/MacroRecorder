@@ -31,14 +31,9 @@ public partial class MainWindow : Window
         _viewModel = App.Services.GetRequiredService<MainViewModel>();
         DataContext = _viewModel;
 
-        // Set up hotkey manager with this window's handle
+        // Global hotkeys arrive as WM_HOTKEY on this window
         var hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-        if (hwndSource != null)
-        {
-            var hotKeyManager = App.Services.GetRequiredService<HotKeyManager>();
-            hotKeyManager.SetWindowHandle(hwndSource.Handle);
-            hwndSource.AddHook(WndProc);
-        }
+        hwndSource?.AddHook(WndProc);
 
         // Set up AvalonEdit syntax highlighting
         SetupSyntaxHighlighting();
@@ -61,6 +56,10 @@ public partial class MainWindow : Window
 
         // Initialize
         await _viewModel.InitializeCommand.ExecuteAsync(null);
+
+        // After loading, so a "hotkey already in use" message isn't overwritten by the load status
+        if (hwndSource != null)
+            _viewModel.AttachToWindow(hwndSource.Handle);
     }
 
     private void SetupSyntaxHighlighting()
@@ -102,6 +101,13 @@ public partial class MainWindow : Window
             handled = true;
         }
         return IntPtr.Zero;
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // Saved to disk in App.OnExit along with every other modified macro
+        _viewModel?.FlushEditor(save: false);
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)

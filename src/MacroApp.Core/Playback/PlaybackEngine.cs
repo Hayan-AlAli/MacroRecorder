@@ -23,13 +23,31 @@ public record PlaybackProgressEventArgs(
     int TotalEvents,
     int CurrentRepeat,
     int TotalRepeats,
-    PlaybackState State);
+    PlaybackState State,
+    int Line = 0);
+
+/// <summary>
+/// Common surface of the two playback engines so the UI can drive either one.
+/// </summary>
+public interface IPlaybackEngine
+{
+    PlaybackState State { get; }
+    event Action<PlaybackState>? StateChanged;
+    event Action<PlaybackProgressEventArgs>? Progress;
+    event Action? Completed;
+    event Action<Exception>? Error;
+    void Pause();
+    void Resume();
+    void EnterStepMode();
+    void StepNext();
+    void Stop();
+}
 
 /// <summary>
 /// Replays macro events via InputSimulator on a dedicated background thread.
 /// Supports speed multipliers, repeat, step-through, breakpoints, and emergency stop.
 /// </summary>
-public sealed class PlaybackEngine : IDisposable
+public sealed class PlaybackEngine : IPlaybackEngine, IDisposable
 {
     private readonly InputSimulator _inputSimulator;
     private Thread? _playbackThread;
@@ -78,6 +96,7 @@ public sealed class PlaybackEngine : IDisposable
 
         if (events.Count == 0) return;
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         _inputSimulator.TargetWindowHandle = IntPtr.Zero;
 
@@ -92,6 +111,9 @@ public sealed class PlaybackEngine : IDisposable
             IsBackground = true,
             Priority = ThreadPriority.AboveNormal
         };
+
+        // Set before the thread starts so a second Start() call can't slip in.
+        SetState(PlaybackState.Playing);
         _playbackThread.Start();
     }
 
@@ -118,7 +140,8 @@ public sealed class PlaybackEngine : IDisposable
     /// </summary>
     public void EnterStepMode()
     {
-        SetState(PlaybackState.StepThrough);
+        if (_state is PlaybackState.Playing or PlaybackState.Paused)
+            SetState(PlaybackState.StepThrough);
     }
 
     /// <summary>
@@ -147,10 +170,8 @@ public sealed class PlaybackEngine : IDisposable
     {
         try
         {
-            SetState(PlaybackState.Playing);
-
-            int totalRepeats = settings.RepeatCount;
-            bool infinite = totalRepeats == AppConstants.InfiniteRepeat;
+            bool infinite = settings.RepeatCount == AppConstants.InfiniteRepeat;
+            int totalRepeats = Math.Max(1, settings.RepeatCount);
             int repeatIndex = 0;
 
             while (infinite || repeatIndex < totalRepeats)
@@ -180,7 +201,7 @@ public sealed class PlaybackEngine : IDisposable
                     if (evt.DelayFromPreviousMs > 0)
                     {
                         double adjustedDelay = evt.DelayFromPreviousMs / settings.SpeedMultiplier;
-                        HighPrecisionDelay(adjustedDelay, ct);
+                        PreciseDelay.Wait(adjustedDelay, ct);
                     }
 
                     ct.ThrowIfCancellationRequested();
@@ -207,7 +228,7 @@ public sealed class PlaybackEngine : IDisposable
                 // Inter-repeat delay
                 if ((infinite || repeatIndex < totalRepeats) && settings.InterRepeatDelayMs > 0)
                 {
-                    HighPrecisionDelay(settings.InterRepeatDelayMs, ct);
+                    PreciseDelay.Wait(settings.InterRepeatDelayMs, ct);
                 }
             }
 
@@ -222,6 +243,10 @@ public sealed class PlaybackEngine : IDisposable
         {
             SetState(PlaybackState.Idle);
             Error?.Invoke(ex);
+        }
+        finally
+        {
+            _inputSimulator.ReleaseAll();
         }
     }
 
@@ -258,33 +283,6 @@ public sealed class PlaybackEngine : IDisposable
                 _inputSimulator.SendMouseDrag(evt.Button.Value,
                     evt.X.Value, evt.Y.Value, evt.EndX.Value, evt.EndY.Value, coordinateMode);
                 break;
-        }
-    }
-
-    /// <summary>
-    /// High-precision delay using spin-wait for sub-millisecond accuracy.
-    /// Uses Thread.Sleep for the bulk, then spin-waits for the remainder.
-    /// </summary>
-    private static void HighPrecisionDelay(double milliseconds, CancellationToken ct)
-    {
-        if (milliseconds <= 0) return;
-
-        long targetTicks = HighResolutionTimer.MillisecondsToTicks(milliseconds);
-        long startTicks = HighResolutionTimer.GetTimestamp();
-
-        // Sleep for most of the duration (leave 2ms for spin-wait precision)
-        int sleepMs = (int)(milliseconds - 2);
-        if (sleepMs > 0)
-        {
-            Thread.Sleep(sleepMs);
-            ct.ThrowIfCancellationRequested();
-        }
-
-        // Spin-wait for the remainder
-        while (HighResolutionTimer.GetTimestamp() - startTicks < targetTicks)
-        {
-            ct.ThrowIfCancellationRequested();
-            Thread.SpinWait(10);
         }
     }
 

@@ -20,7 +20,7 @@ public record HotKeyBinding(uint Modifiers, uint VirtualKey)
         if ((Modifiers & NativeConstants.MOD_ALT) != 0) parts.Add("Alt");
         if ((Modifiers & NativeConstants.MOD_SHIFT) != 0) parts.Add("Shift");
         if ((Modifiers & NativeConstants.MOD_WIN) != 0) parts.Add("Win");
-        parts.Add(((System.Windows.Input.Key)VirtualKey).ToString());
+        parts.Add(KeyNames.Format((int)VirtualKey));
         return string.Join("+", parts);
     }
 }

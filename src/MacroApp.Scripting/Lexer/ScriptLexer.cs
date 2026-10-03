@@ -113,11 +113,12 @@ public sealed class ScriptLexer
         else
         {
             command = trimmed[..firstSpace];
-            args = trimmed[(firstSpace + 1)..].Trim();
+            args = trimmed[(firstSpace + 1)..].TrimEnd();
         }
 
         // Resolve command token
-        int col = line.IndexOf(command, StringComparison.Ordinal) + 1;
+        int indent = line.Length - line.TrimStart().Length;
+        int col = indent + 1;
         if (Keywords.TryGetValue(command, out var commandType))
         {
             tokens.Add(new Token(commandType, command, lineNumber, col));
@@ -136,7 +137,7 @@ public sealed class ScriptLexer
         // Parse arguments
         if (!string.IsNullOrEmpty(args))
         {
-            TokenizeArguments(args, lineNumber, firstSpace + 2, tokens);
+            TokenizeArguments(args, lineNumber, indent + firstSpace + 2, tokens);
         }
 
         return tokens;
@@ -153,6 +154,10 @@ public sealed class ScriptLexer
             if (pos >= args.Length) break;
 
             int tokenStart = startCol + pos;
+
+            // Trailing comment: "MouseClick Left 10 20  // open the menu"
+            if (args[pos] == '/' && pos + 1 < args.Length && args[pos + 1] == '/')
+                break;
 
             // Quoted string
             if (args[pos] == '"')

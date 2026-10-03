@@ -85,7 +85,8 @@ public record InputEvent
     /// </summary>
     public string ToScriptLine()
     {
-        var delay = DelayFromPreviousMs > 0 ? $"Delay {DelayFromPreviousMs:F0}\n" : "";
+        double delayMs = Math.Round(DelayFromPreviousMs);
+        var delay = delayMs > 0 ? $"Delay {delayMs:F0}\n" : "";
         return Type switch
         {
             InputEventType.KeyDown => $"{delay}KeyDown {FormatKeyName()}",
@@ -99,16 +100,6 @@ public record InputEvent
         };
     }
 
-    private string FormatKeyName()
-    {
-        if (VirtualKeyCode == null) return "Unknown";
-        try
-        {
-            return ((System.Windows.Input.Key)VirtualKeyCode.Value).ToString();
-        }
-        catch
-        {
-            return $"0x{VirtualKeyCode:X2}";
-        }
-    }
+    private string FormatKeyName() =>
+        VirtualKeyCode == null ? "Unknown" : NativeInterop.KeyNames.Format(VirtualKeyCode.Value);
 }
