@@ -41,7 +41,7 @@ public static class AppConstants
 
     // ── UI ──────────────────────────────────────────────────────────
     public const string AppName = "MacroApp";
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "1.1.0";
     public const double RecordingBlinkIntervalMs = 500;
     public const string DefaultMacroStoragePath = "Macros";
 

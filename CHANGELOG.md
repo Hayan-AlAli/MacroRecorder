@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v1.1.0
+
+Download `MacroRecorder-v1.1.0-win-x64.zip` and unzip it. If you're upgrading, put the new
+`MacroRecorder.exe` over the old one; your macros and settings sit next to it and are kept.
 
 - New look. Neutral dark theme that matches Windows 11, Windows' own icons instead of
   emoji, a flat command bar, and a dark title bar. Scrollbars, dropdowns, checkboxes
