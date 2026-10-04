@@ -11,6 +11,9 @@
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>MacroRecorder</AssemblyName>
+    <Version>1.0.0</Version>
+    <Product>MacroRecorder</Product>
   </PropertyGroup>
 
   <ItemGroup>

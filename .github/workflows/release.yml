@@ -1,0 +1,60 @@
+name: release
+
+# Push a tag like v1.2.0 (or run this by hand with a version) to build MacroRecorder.exe
+# on Windows and publish it as a GitHub release. Notes come from that version's
+# section in CHANGELOG.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. v1.0.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test
+        run: dotnet test tests/MacroApp.Tests -c Release
+
+      - name: Publish single-file exe
+        shell: pwsh
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          dotnet publish src/MacroApp.UI -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -p:DebugType=none `
+            -p:Version=$version -o publish
+          Copy-Item README.md publish/
+          Compress-Archive -Path publish/* -DestinationPath "MacroRecorder-$env:TAG-win-x64.zip"
+
+      - name: Release notes from CHANGELOG.md
+        shell: pwsh
+        run: |
+          $lines = Get-Content CHANGELOG.md
+          $start = [Array]::FindIndex($lines, [Predicate[string]]{ param($l) $l -match "^## $([regex]::Escape($env:TAG))\b" })
+          if ($start -lt 0) { "No CHANGELOG.md section for $env:TAG." | Set-Content notes.md; exit 0 }
+          $end = [Array]::FindIndex($lines, $start + 1, [Predicate[string]]{ param($l) $l -match '^## ' })
+          if ($end -lt 0) { $end = $lines.Length }
+          $lines[($start + 1)..($end - 1)] | Set-Content notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: MacroRecorder ${{ env.TAG }}
+          body_path: notes.md
+          files: MacroRecorder-${{ env.TAG }}-win-x64.zip

@@ -15,6 +15,15 @@ KeyCombo Ctrl S
 
 You can tidy that up by hand, wrap it in a `Repeat`, add variables, and so on.
 
+## Download
+
+Grab the zip from the [releases page](https://github.com/Hayan-AlAli/MacroRecorder/releases),
+unzip it and run `MacroRecorder.exe`. Nothing else to install. It needs 64-bit Windows 10
+(1809 or later) or Windows 11. The exe isn't signed, so SmartScreen will warn you the
+first time: "More info", then "Run anyway".
+
+Put it in a folder you can write to, since it keeps macros, settings and logs next to itself.
+
 ## Building and running
 
 You need Windows 10 (version 1809 or later) or Windows 11, and the
@@ -31,6 +40,10 @@ Tests:
 ```powershell
 dotnet test
 ```
+
+Releases are built by GitHub Actions: add a section for the new version to
+`CHANGELOG.md`, then push a tag like `v1.1.0` and the workflow builds the exe and
+publishes it.
 
 ## Using it
 
