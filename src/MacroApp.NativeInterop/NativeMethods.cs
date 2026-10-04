@@ -203,6 +203,15 @@ public static class NativeMethods
     public static readonly IntPtr HWND_TOPMOST = new(-1);
     public const uint SWP_SHOWWINDOW = 0x0040;
 
+    // ── Dark title bar ──────────────────────────────────────────────
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE on Windows 10 20H1 and later; 19 on older builds.</summary>
+    public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    public const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;
+
     // ── Screen capture (GDI) ────────────────────────────────────────
 
     [DllImport("user32.dll")]

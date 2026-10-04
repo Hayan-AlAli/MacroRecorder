@@ -14,8 +14,8 @@ namespace MacroApp.UI.Views;
 public sealed class BreakpointMargin : AbstractMargin
 {
     private const double MarginWidth = 16;
-    private static readonly Brush DotBrush = new SolidColorBrush(Color.FromRgb(239, 68, 68));
-    private static readonly Brush HoverBrush = new SolidColorBrush(Color.FromArgb(90, 239, 68, 68));
+    private static readonly Brush DotBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x48, 0x4D));
+    private static readonly Brush HoverBrush = new SolidColorBrush(Color.FromArgb(0x60, 0xE5, 0x48, 0x4D));
 
     private readonly List<TextAnchor> _anchors = new();
     private int _hoverLine;

@@ -3,18 +3,18 @@
                   xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
 
   <!-- Colors -->
-  <Color name="Comment" foreground="#6A9955" fontStyle="italic" />
-  <Color name="KeyboardCommand" foreground="#569CD6" fontWeight="bold" />
-  <Color name="MouseCommand" foreground="#C586C0" fontWeight="bold" />
-  <Color name="TimingCommand" foreground="#DCDCAA" fontWeight="bold" />
-  <Color name="ControlFlow" foreground="#D16969" fontWeight="bold" />
-  <Color name="Variable" foreground="#4EC9B0" />
-  <Color name="WindowCommand" foreground="#CE9178" fontWeight="bold" />
-  <Color name="ImageCommand" foreground="#B5CEA8" fontWeight="bold" />
-  <Color name="MiscCommand" foreground="#9CDCFE" fontWeight="bold" />
-  <Color name="String" foreground="#CE9178" />
+  <Color name="Comment" foreground="#6A9955" />
+  <Color name="KeyboardCommand" foreground="#6CB2F5" />
+  <Color name="MouseCommand" foreground="#6CB2F5" />
+  <Color name="TimingCommand" foreground="#6CB2F5" />
+  <Color name="ControlFlow" foreground="#C792EA" />
+  <Color name="Variable" foreground="#7FD4C5" />
+  <Color name="WindowCommand" foreground="#6CB2F5" />
+  <Color name="ImageCommand" foreground="#6CB2F5" />
+  <Color name="MiscCommand" foreground="#6CB2F5" />
+  <Color name="String" foreground="#D9A67E" />
   <Color name="Number" foreground="#B5CEA8" />
-  <Color name="Label" foreground="#DCDCAA" fontWeight="bold" />
+  <Color name="Label" foreground="#DCDCAA" />
 
   <RuleSet>
     <!-- Comments -->

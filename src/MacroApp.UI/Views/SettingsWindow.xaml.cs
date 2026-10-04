@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppSettings current)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
         Show(current);
     }
 

@@ -55,7 +55,7 @@ publishes it.
    window has focus.
 
 The hotkeys are global, so you can start and stop things without switching back to the
-app. These are the defaults; you can change them under **Settings**, and the status bar
+app. The status bar turns red while recording and blue while a macro plays. These are the defaults; you can change them under **Settings**, and the status bar
 always shows the current ones. If another program has already claimed a hotkey, the
 status bar tells you and you can pick a different one.
 
@@ -81,10 +81,10 @@ Some details worth knowing:
 - Stopping halfway through a macro releases any keys or mouse buttons it was holding,
   so you don't end up with a stuck Shift.
 - The speed slider scales every delay. Repeat count `-1` loops until you stop it.
-- **Step** pauses before each line; press it again to run the next one. **⏸** carries on
-  at normal speed.
+- **Step** pauses before each line; press it again to run the next one. **Resume** carries
+  on at normal speed.
 - Click in the strip left of the line numbers to set a breakpoint (a red dot). Playback
-  pauses before that line and highlights it, then Step and ⏸ work as above. Breakpoints
+  pauses before that line and highlights it, then Step and Resume work as above. Breakpoints
   are saved with the macro and move with their line when you edit around them.
 - Recording into a macro that's already selected replaces its script. Make a new macro
   first if you want to keep the old one.

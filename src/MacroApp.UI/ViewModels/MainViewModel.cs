@@ -84,7 +84,10 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(PlayCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveMacroCommand))]
     private Macro? _selectedMacro;
+
+    private bool HasSelection() => SelectedMacro != null;
 
     [ObservableProperty]
     private bool _recordingIndicatorVisible;
@@ -313,6 +316,16 @@ public partial class MainViewModel : ObservableObject
         SelectedMacro?.FilePath is { } file
             ? System.IO.Path.GetDirectoryName(file)!
             : _macroManager.StoragePath;
+
+    [RelayCommand(CanExecute = nameof(CanToggleRecord))]
+    private void ToggleRecord() => ToggleRecording();
+
+    private bool CanToggleRecord() => !IsPlaying;
+
+    [RelayCommand(CanExecute = nameof(CanStopAll))]
+    private void StopAll() => StopEverything();
+
+    private bool CanStopAll() => IsRecording || IsCountingDown || IsPlaying;
 
     private void ToggleRecording()
     {
@@ -564,7 +577,7 @@ public partial class MainViewModel : ObservableObject
 
     private bool CanPausePlayback() => IsPlaying;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPausePlayback))]
     private void StepThrough()
     {
         if (_activePlayback?.State == PlaybackState.StepThrough)
@@ -603,7 +616,7 @@ public partial class MainViewModel : ObservableObject
         MacroList.SelectedMacro = macro;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task SaveMacroAsync()
     {
         if (SelectedMacro == null) return;
@@ -680,7 +693,7 @@ public partial class MainViewModel : ObservableObject
             if (args.State == PlaybackState.StepThrough && args.Line > 0)
             {
                 Editor.HighlightedLine = args.Line;
-                StatusText = $"Paused before line {args.Line} — Step runs it, ⏸ resumes";
+                StatusText = $"Paused before line {args.Line}. Step runs it, Resume carries on.";
             }
             else
             {
@@ -712,6 +725,8 @@ public partial class MainViewModel : ObservableObject
     private void RefreshCommands()
     {
         RecordCommand.NotifyCanExecuteChanged();
+        ToggleRecordCommand.NotifyCanExecuteChanged();
+        StopAllCommand.NotifyCanExecuteChanged();
         StepThroughCommand.NotifyCanExecuteChanged();
         StopRecordingCommand.NotifyCanExecuteChanged();
         PauseRecordingCommand.NotifyCanExecuteChanged();

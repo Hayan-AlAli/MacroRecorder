@@ -18,9 +18,9 @@ public sealed class RegionPickerWindow : Window
     private readonly Canvas _canvas = new();
     private readonly Rectangle _box = new()
     {
-        Stroke = new SolidColorBrush(Color.FromRgb(79, 142, 247)),
+        Stroke = new SolidColorBrush(Color.FromRgb(0x3B, 0x8E, 0xEA)),
         StrokeThickness = 2,
-        Fill = new SolidColorBrush(Color.FromArgb(40, 79, 142, 247)),
+        Fill = new SolidColorBrush(Color.FromArgb(0x28, 0x3B, 0x8E, 0xEA)),
         Visibility = Visibility.Collapsed,
     };
 
@@ -44,7 +44,8 @@ public sealed class RegionPickerWindow : Window
         {
             Text = "Drag around the part of the screen to capture.  Esc to cancel.",
             Foreground = Brushes.White,
-            FontSize = 16,
+            FontSize = 15,
+            FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"),
             Margin = new Thickness(24),
         });
         Content = _canvas;

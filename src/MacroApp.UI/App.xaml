@@ -14,7 +14,9 @@
             <!-- Value Converters -->
             <views:BoolToVisibilityConverter x:Key="BoolToVisibility" />
             <views:BoolToOpacityConverter x:Key="BoolToOpacity" />
-            <views:BoolToErrorBrushConverter x:Key="BoolToErrorBrush" />
+            <views:NullToVisibleConverter x:Key="NullToVisible" />
+            <views:ZeroToVisibleConverter x:Key="ZeroToVisible" />
+            <views:StateLabelConverter x:Key="StateLabel" />
             <views:EventToDisplayConverter x:Key="EventToDisplay" />
         </ResourceDictionary>
     </Application.Resources>

@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -108,11 +109,40 @@ public partial class MainWindow : Window
         ScriptEditor.Options.EnableHyperlinks = false;
         ScriptEditor.Options.EnableRectangularSelection = true;
         ScriptEditor.Options.HighlightCurrentLine = true;
-        ScriptEditor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(Color.FromRgb(79, 142, 247));
+        ScriptEditor.Options.ConvertTabsToSpaces = true;
+        ScriptEditor.Options.IndentationSize = 2;
 
-        // Line number colors
-        ScriptEditor.TextArea.TextView.CurrentLineBackground = new SolidColorBrush(Color.FromArgb(30, 79, 142, 247));
-        ScriptEditor.TextArea.TextView.CurrentLineBorder = new Pen(new SolidColorBrush(Color.FromArgb(50, 79, 142, 247)), 1);
+        var textArea = ScriptEditor.TextArea;
+        textArea.TextView.CurrentLineBackground = Frozen(Color.FromArgb(0x0C, 0xFF, 0xFF, 0xFF));
+        textArea.TextView.CurrentLineBorder = null;
+        textArea.SelectionBrush = Frozen(Color.FromArgb(0x55, 0x3B, 0x8E, 0xEA));
+        textArea.SelectionBorder = null;
+        textArea.SelectionForeground = null;
+        textArea.SelectionCornerRadius = 2;
+        textArea.Caret.CaretBrush = (Brush)FindResource("TextBrush");
+
+        // Drop the dotted rule AvalonEdit draws after the line numbers and use plain spacing instead
+        foreach (var rule in textArea.LeftMargins.OfType<System.Windows.Shapes.Line>().ToList())
+            textArea.LeftMargins.Remove(rule);
+        textArea.TextView.Margin = new Thickness(8, 0, 0, 0);
+    }
+
+    private static SolidColorBrush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private void Delete_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.MacroList.SelectedMacro is not { } macro) return;
+
+        var answer = MessageBox.Show(this, $"Delete \"{macro.Name}\"? Its .mcr file is removed too.",
+            "Delete macro", MessageBoxButton.OKCancel, MessageBoxImage.None, MessageBoxResult.Cancel);
+
+        if (answer == MessageBoxResult.OK)
+            _viewModel.MacroList.DeleteSelectedCommand.Execute(null);
     }
 
     private void PushBreakpointsToViewModel()
@@ -311,9 +341,7 @@ public partial class MainWindow : Window
 
 // ── Value Converters ────────────────────────────────────────────────
 
-/// <summary>
-/// Converts bool to Visibility (True=Visible, False=Collapsed).
-/// </summary>
+/// <summary>True → Visible, False → Collapsed.</summary>
 public class BoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -323,40 +351,58 @@ public class BoolToVisibilityConverter : IValueConverter
         => value is Visibility.Visible;
 }
 
-/// <summary>
-/// Converts bool to opacity (True=1.0, False=0.3).
-/// </summary>
+/// <summary>True → fully opaque, False → faded (used for the blinking record dot).</summary>
 public class BoolToOpacityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         => value is true ? 1.0 : 0.3;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        => throw new NotImplementedException();
+        => throw new NotSupportedException();
 }
 
-/// <summary>
-/// Converts bool to error/normal foreground brush.
-/// </summary>
-public class BoolToErrorBrushConverter : IValueConverter
+/// <summary>Visible when the value is null; for "nothing selected" placeholders.</summary>
+public class NullToVisibleConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        => value is true
-            ? new SolidColorBrush(Color.FromRgb(239, 68, 68))   // Red
-            : new SolidColorBrush(Color.FromRgb(74, 222, 128));  // Green
+    public object Convert(object? value, Type targetType, object parameter, CultureInfo culture)
+        => value == null ? Visibility.Visible : Visibility.Collapsed;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        => throw new NotImplementedException();
+        => throw new NotSupportedException();
 }
 
-/// <summary>
-/// Converts InputEvent to display string.
-/// </summary>
+/// <summary>Visible when a count is zero; for empty-list hints.</summary>
+public class ZeroToVisibleConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Turns engine state names into the words shown in the status bar.</summary>
+public class StateLabelConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value switch
+    {
+        "Countdown" => "Starting",
+        "StepThrough" => "Stepping",
+        "Stopping" => "Stopping",
+        string s => s,
+        _ => string.Empty
+    };
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Formats a recorded input event for the events list.</summary>
 public class EventToDisplayConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         => value is InputEvent evt ? evt.ToDisplayString() : string.Empty;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        => throw new NotImplementedException();
+        => throw new NotSupportedException();
 }

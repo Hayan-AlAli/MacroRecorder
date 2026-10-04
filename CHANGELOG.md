@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- New look. Neutral dark theme that matches Windows 11, Windows' own icons instead of
+  emoji, a flat command bar, and a dark title bar. Scrollbars, dropdowns, checkboxes
+  and tooltips are themed instead of showing the default light Windows ones.
+- The status bar turns red while recording and blue while a macro plays, replacing the
+  banners above the editor.
+- One Record button that turns into "Stop recording", and one Stop button for everything.
+- The macro list is a plain list with search, Duplicate and Delete (Delete now asks first).
+- Speed is a dropdown (0.25× to 10×) instead of a slider.
+- Calmer syntax colours in the editor.
+
 ## v1.0.0
 
 First proper release. Download `MacroRecorder-v1.0.0-win-x64.zip`, unzip it somewhere you
